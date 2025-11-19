@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import login, logout
+from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.db.models import Q
 from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico
@@ -14,6 +15,14 @@ from .serializers import (
 )
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def csrf_token_view(request):
+    """Endpoint para obtener el CSRF token"""
+    csrf_token = get_token(request)
+    return Response({'csrfToken': csrf_token})
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
@@ -22,10 +31,18 @@ def login_view(request):
     if serializer.is_valid():
         user = serializer.validated_data['user']
         login(request, user)
-        return Response({
+        
+        # Crear respuesta y asegurar que se envíe el CSRF token
+        response = Response({
             'user': UsuarioSerializer(user).data,
             'message': 'Login exitoso'
         })
+        
+        # Forzar que Django envíe el CSRF cookie
+        from django.middleware.csrf import get_token
+        get_token(request)
+        
+        return response
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

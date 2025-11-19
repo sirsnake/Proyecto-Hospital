@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSession } from "@/lib/auth"
-import { authAPI } from "@/lib/api"
+import { authAPI, pacientesAPI, fichasAPI, solicitudesMedicamentosAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ModalPacienteNN } from "@/components/modal-paciente-nn"
 
 export default function ParamedicoDashboard() {
@@ -19,6 +20,53 @@ export default function ParamedicoDashboard() {
   const [user, setUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("registro")
   const [modalNNOpen, setModalNNOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const [solicitudes, setSolicitudes] = useState<any[]>([])
+
+  // Estados del formulario de paciente
+  const [pacienteData, setPacienteData] = useState({
+    rut: "",
+    nombres: "",
+    apellidos: "",
+    sexo: "",
+    fecha_nacimiento: "",
+    telefono: "",
+    direccion: ""
+  })
+
+  // Estados del formulario de signos vitales
+  const [signosData, setSignosData] = useState({
+    presion_sistolica: "",
+    presion_diastolica: "",
+    frecuencia_cardiaca: "",
+    frecuencia_respiratoria: "",
+    saturacion_o2: "",
+    temperatura: "",
+    glucosa: "",
+    eva: "",
+    escala_glasgow: ""
+  })
+
+  // Estados del formulario de ficha
+  const [fichaData, setFichaData] = useState({
+    motivo_consulta: "",
+    circunstancias: "",
+    sintomas: "",
+    nivel_consciencia: "",
+    prioridad: "",
+    eta: "15 minutos"
+  })
+
+  // Estados del formulario de solicitud de medicamento
+  const [solicitudData, setSolicitudData] = useState({
+    medicamento: "",
+    dosis: "",
+    justificacion: ""
+  })
+
+  const [pacienteCreado, setPacienteCreado] = useState<any>(null)
   const [pacienteNN, setPacienteNN] = useState<any>(null)
 
   useEffect(() => {
@@ -28,11 +76,215 @@ export default function ParamedicoDashboard() {
       return
     }
     setUser(currentUser)
+    cargarSolicitudes()
   }, [router])
 
-  const handleConfirmNN = (data: any) => {
-    setPacienteNN(data)
-    console.log("[v0] Paciente NN registrado:", data)
+  const cargarSolicitudes = async () => {
+    try {
+      const data = await solicitudesMedicamentosAPI.listar()
+      setSolicitudes(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("Error al cargar solicitudes:", err)
+      setSolicitudes([])
+    }
+  }
+
+  const handleConfirmNN = async (data: any) => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      const pacienteNNData = {
+        nombres: "Paciente",
+        apellidos: "NN",
+        sexo: data.sexo,
+        es_nn: true,
+        id_temporal: data.idTemporal,
+        edad_aproximada: parseInt(data.edadAproximada),
+        caracteristicas: data.caracteristicas || ""
+      }
+      
+      console.log('Enviando paciente NN:', pacienteNNData)
+      
+      const paciente = await pacientesAPI.crear(pacienteNNData)
+      setPacienteNN(paciente)
+      setPacienteCreado(paciente)
+      setSuccess("Paciente NN registrado exitosamente")
+      setModalNNOpen(false)
+      setTimeout(() => setSuccess(""), 5000)
+    } catch (err: any) {
+      console.error('Error al registrar paciente NN:', err)
+      setError(err.message || "Error al registrar paciente NN")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRegistrarPaciente = async () => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      if (!pacienteData.rut || !pacienteData.nombres || !pacienteData.apellidos || !pacienteData.sexo) {
+        setError("Complete los campos obligatorios: RUT, nombres, apellidos y sexo")
+        return
+      }
+      
+      // Primero buscar si el paciente ya existe por RUT
+      try {
+        const pacientesExistentes = await pacientesAPI.buscar(pacienteData.rut)
+        if (pacientesExistentes && pacientesExistentes.length > 0) {
+          // Paciente ya existe, usarlo en lugar de crear uno nuevo
+          const pacienteExistente = pacientesExistentes[0]
+          setPacienteCreado(pacienteExistente)
+          setSuccess(`⚠️ El RUT ${pacienteData.rut} ya existe en el sistema. Paciente cargado: ${pacienteExistente.nombres} ${pacienteExistente.apellidos}`)
+          setTimeout(() => setSuccess(""), 8000)
+          return
+        }
+      } catch (searchErr) {
+        // Si falla la búsqueda, continuar con la creación
+        console.log('No se encontró paciente existente, procediendo a crear')
+      }
+      
+      const data = {
+        ...pacienteData,
+        es_nn: false
+      }
+      
+      console.log('Enviando datos del paciente:', data)
+      
+      const paciente = await pacientesAPI.crear(data)
+      setPacienteCreado(paciente)
+      setSuccess("Paciente registrado exitosamente")
+      setTimeout(() => setSuccess(""), 5000)
+    } catch (err: any) {
+      console.error('Error al registrar paciente:', err)
+      setError(err.message || "Error al registrar paciente")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEnviarFicha = async () => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      if (!pacienteCreado && !pacienteNN) {
+        setError("Primero debe registrar un paciente")
+        return
+      }
+      
+      if (!fichaData.motivo_consulta || !fichaData.circunstancias || !fichaData.prioridad) {
+        setError("Complete todos los campos obligatorios de la ficha")
+        return
+      }
+      
+      if (!signosData.presion_sistolica || !signosData.frecuencia_cardiaca || !signosData.saturacion_o2) {
+        setError("Complete los signos vitales obligatorios")
+        return
+      }
+      
+      const fichaCompleta = {
+        paciente: (pacienteCreado || pacienteNN).id,
+        paramedico: user.id,
+        motivo_consulta: fichaData.motivo_consulta,
+        circunstancias: fichaData.circunstancias,
+        sintomas: fichaData.sintomas || "Sin síntomas adicionales",
+        nivel_consciencia: fichaData.nivel_consciencia || `Glasgow ${signosData.escala_glasgow || '15'}`,
+        estado: "en_ruta",
+        prioridad: fichaData.prioridad,
+        eta: fichaData.eta,
+        signos_vitales_data: {
+          presion_sistolica: parseInt(signosData.presion_sistolica) || 0,
+          presion_diastolica: parseInt(signosData.presion_diastolica) || 0,
+          frecuencia_cardiaca: parseInt(signosData.frecuencia_cardiaca) || 0,
+          frecuencia_respiratoria: parseInt(signosData.frecuencia_respiratoria) || 0,
+          saturacion_o2: parseInt(signosData.saturacion_o2) || 0,
+          temperatura: parseFloat(signosData.temperatura) || 36.0,
+          glucosa: signosData.glucosa && !isNaN(parseInt(signosData.glucosa)) ? parseInt(signosData.glucosa) : null,
+          escala_glasgow: signosData.escala_glasgow && !isNaN(parseInt(signosData.escala_glasgow)) ? parseInt(signosData.escala_glasgow) : null,
+          eva: signosData.eva && !isNaN(parseInt(signosData.eva)) ? parseInt(signosData.eva) : null
+        }
+      }
+      
+      console.log('📤 Enviando ficha:', fichaCompleta)
+      
+      const response = await fichasAPI.crear(fichaCompleta)
+      console.log('✅ Respuesta del servidor:', response)
+      
+      if (response && response.id) {
+        setSuccess(`¡Ficha #${response.id} enviada al hospital exitosamente!`)
+      } else {
+        setSuccess("¡Ficha enviada al hospital exitosamente!")
+      }
+      
+      // Limpiar formularios
+      setPacienteData({
+        rut: "", nombres: "", apellidos: "", sexo: "", fecha_nacimiento: "", telefono: "", direccion: ""
+      })
+      setSignosData({
+        presion_sistolica: "", presion_diastolica: "", frecuencia_cardiaca: "",
+        frecuencia_respiratoria: "", saturacion_o2: "", temperatura: "",
+        glucosa: "", eva: "", escala_glasgow: ""
+      })
+      setFichaData({
+        motivo_consulta: "", circunstancias: "", sintomas: "",
+        nivel_consciencia: "", prioridad: "", eta: "15 minutos"
+      })
+      setPacienteCreado(null)
+      setPacienteNN(null)
+      
+      setTimeout(() => setSuccess(""), 5000)
+    } catch (err: any) {
+      console.error('Error completo:', err)
+      setError(err.message || "Error al enviar ficha")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSolicitarMedicamento = async () => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      if (!solicitudData.medicamento || !solicitudData.dosis || !solicitudData.justificacion) {
+        setError("Complete todos los campos de la solicitud")
+        return
+      }
+      
+      if (!pacienteCreado && !pacienteNN) {
+        setError("Primero debe registrar un paciente y crear una ficha")
+        return
+      }
+      
+      // Aquí necesitarías tener el ID de la ficha creada
+      // Por simplicidad, asumimos que hay una ficha reciente
+      const fichas = await fichasAPI.listar({ paramedico: user.id, estado: 'en_ruta' })
+      if (fichas.length === 0) {
+        setError("No hay fichas activas para solicitar medicamentos")
+        return
+      }
+      
+      const solicitud = {
+        ficha: fichas[0].id,
+        paramedico: user.id,
+        medicamento: solicitudData.medicamento,
+        dosis: solicitudData.dosis,
+        justificacion: solicitudData.justificacion
+      }
+      
+      await solicitudesMedicamentosAPI.crear(solicitud)
+      setSuccess("Solicitud de medicamento enviada al médico")
+      setSolicitudData({ medicamento: "", dosis: "", justificacion: "" })
+      await cargarSolicitudes()
+      setTimeout(() => setSuccess(""), 5000)
+    } catch (err: any) {
+      setError(err.message || "Error al enviar solicitud")
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (!user) return null
@@ -77,6 +329,18 @@ export default function ParamedicoDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        
+        {success && (
+          <Alert className="mb-4 border-emerald-500 bg-emerald-500/10">
+            <AlertDescription className="text-emerald-500">{success}</AlertDescription>
+          </Alert>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
             <TabsTrigger value="registro">Registrar Paciente</TabsTrigger>
@@ -145,71 +409,98 @@ export default function ParamedicoDashboard() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="rut" className="text-slate-300">
-                        RUT
+                        RUT *
                       </Label>
-                      <Input id="rut" placeholder="12.345.678-9" className="bg-slate-800 border-slate-700 text-white" />
+                      <Input 
+                        id="rut" 
+                        placeholder="12.345.678-9" 
+                        className="bg-slate-800 border-slate-700 text-white"
+                        value={pacienteData.rut}
+                        onChange={(e) => setPacienteData({...pacienteData, rut: e.target.value})}
+                        disabled={!!pacienteNN}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="sexo" className="text-slate-300">
-                        Sexo
+                        Sexo *
                       </Label>
-                      <Select>
+                      <Select 
+                        value={pacienteData.sexo}
+                        onValueChange={(value) => setPacienteData({...pacienteData, sexo: value})}
+                        disabled={!!pacienteNN}
+                      >
                         <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                           <SelectValue placeholder="Seleccionar" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="masculino">Masculino</SelectItem>
-                          <SelectItem value="femenino">Femenino</SelectItem>
+                          <SelectItem value="Masculino">Masculino</SelectItem>
+                          <SelectItem value="Femenino">Femenino</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="nombres" className="text-slate-300">
-                        Nombres
+                        Nombres *
                       </Label>
                       <Input
                         id="nombres"
                         placeholder="Juan Carlos"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={pacienteData.nombres}
+                        onChange={(e) => setPacienteData({...pacienteData, nombres: e.target.value})}
+                        disabled={!!pacienteNN}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="apellidos" className="text-slate-300">
-                        Apellidos
+                        Apellidos *
                       </Label>
                       <Input
                         id="apellidos"
                         placeholder="González Pérez"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={pacienteData.apellidos}
+                        onChange={(e) => setPacienteData({...pacienteData, apellidos: e.target.value})}
+                        disabled={!!pacienteNN}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="edad" className="text-slate-300">
-                        Edad (años)
+                      <Label htmlFor="telefono" className="text-slate-300">
+                        Teléfono
                       </Label>
                       <Input
-                        id="edad"
-                        type="number"
-                        placeholder="45"
+                        id="telefono"
+                        placeholder="+56912345678"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={pacienteData.telefono}
+                        onChange={(e) => setPacienteData({...pacienteData, telefono: e.target.value})}
+                        disabled={!!pacienteNN}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="prevision" className="text-slate-300">
-                        Previsión
+                      <Label htmlFor="fecha_nacimiento" className="text-slate-300">
+                        Fecha de Nacimiento
                       </Label>
-                      <Select>
-                        <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="fonasa">FONASA</SelectItem>
-                          <SelectItem value="isapre">ISAPRE</SelectItem>
-                          <SelectItem value="particular">PARTICULAR</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        id="fecha_nacimiento"
+                        type="date"
+                        className="bg-slate-800 border-slate-700 text-white"
+                        value={pacienteData.fecha_nacimiento}
+                        onChange={(e) => setPacienteData({...pacienteData, fecha_nacimiento: e.target.value})}
+                        disabled={!!pacienteNN}
+                      />
                     </div>
                   </div>
+                  
+                  {!pacienteNN && !pacienteCreado && (
+                    <Button 
+                      onClick={handleRegistrarPaciente} 
+                      disabled={loading}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                      {loading ? "Registrando..." : "Registrar Paciente"}
+                    </Button>
+                  )}
                 </div>
 
                 {/* Signos Vitales */}
@@ -229,58 +520,70 @@ export default function ParamedicoDashboard() {
                   <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
                       <Label htmlFor="presion" className="text-slate-300">
-                        Presión Arterial (mmHg)
+                        Presión Arterial (mmHg) *
                       </Label>
                       <div className="flex gap-2">
                         <Input
                           id="presion-sistolica"
+                          type="number"
                           placeholder="120"
                           className="bg-slate-800 border-slate-700 text-white"
+                          value={signosData.presion_sistolica}
+                          onChange={(e) => setSignosData({...signosData, presion_sistolica: e.target.value})}
                         />
                         <span className="text-slate-400 flex items-center">/</span>
                         <Input
                           id="presion-diastolica"
+                          type="number"
                           placeholder="80"
                           className="bg-slate-800 border-slate-700 text-white"
+                          value={signosData.presion_diastolica}
+                          onChange={(e) => setSignosData({...signosData, presion_diastolica: e.target.value})}
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="fc" className="text-slate-300">
-                        Frecuencia Cardíaca (lpm)
+                        Frecuencia Cardíaca (lpm) *
                       </Label>
                       <Input
                         id="fc"
                         type="number"
                         placeholder="75"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={signosData.frecuencia_cardiaca}
+                        onChange={(e) => setSignosData({...signosData, frecuencia_cardiaca: e.target.value})}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="fr" className="text-slate-300">
-                        Frecuencia Respiratoria (rpm)
+                        Frecuencia Respiratoria (rpm) *
                       </Label>
                       <Input
                         id="fr"
                         type="number"
                         placeholder="16"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={signosData.frecuencia_respiratoria}
+                        onChange={(e) => setSignosData({...signosData, frecuencia_respiratoria: e.target.value})}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="sato2" className="text-slate-300">
-                        Saturación O₂ (%)
+                        Saturación O₂ (%) *
                       </Label>
                       <Input
                         id="sato2"
                         type="number"
                         placeholder="98"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={signosData.saturacion_o2}
+                        onChange={(e) => setSignosData({...signosData, saturacion_o2: e.target.value})}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="temperatura" className="text-slate-300">
-                        Temperatura (°C)
+                        Temperatura (°C) *
                       </Label>
                       <Input
                         id="temperatura"
@@ -288,6 +591,8 @@ export default function ParamedicoDashboard() {
                         step="0.1"
                         placeholder="36.5"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={signosData.temperatura}
+                        onChange={(e) => setSignosData({...signosData, temperatura: e.target.value})}
                       />
                     </div>
                     <div className="space-y-2">
@@ -299,6 +604,8 @@ export default function ParamedicoDashboard() {
                         type="number"
                         placeholder="90"
                         className="bg-slate-800 border-slate-700 text-white"
+                        value={signosData.glucosa}
+                        onChange={(e) => setSignosData({...signosData, glucosa: e.target.value})}
                       />
                     </div>
                   </div>
@@ -307,7 +614,7 @@ export default function ParamedicoDashboard() {
                     <Label htmlFor="eva" className="text-slate-300">
                       EVA - Escala Visual Análoga del Dolor
                     </Label>
-                    <Select>
+                    <Select value={signosData.eva} onValueChange={(value) => setSignosData({...signosData, eva: value})}>
                       <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                         <SelectValue placeholder="Seleccionar nivel de dolor" />
                       </SelectTrigger>
@@ -332,7 +639,7 @@ export default function ParamedicoDashboard() {
                     <Label htmlFor="glasgow" className="text-slate-300">
                       Escala de Glasgow
                     </Label>
-                    <Select>
+                    <Select value={signosData.escala_glasgow} onValueChange={(value) => setSignosData({...signosData, escala_glasgow: value})}>
                       <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                         <SelectValue placeholder="Seleccionar nivel de consciencia" />
                       </SelectTrigger>
@@ -363,31 +670,35 @@ export default function ParamedicoDashboard() {
 
                   <div className="space-y-2">
                     <Label htmlFor="motivo" className="text-slate-300">
-                      Motivo de Consulta
+                      Motivo de Consulta *
                     </Label>
                     <Textarea
                       id="motivo"
                       placeholder="Ej: Dolor torácico intenso hace 30 minutos"
                       className="bg-slate-800 border-slate-700 text-white min-h-[80px]"
+                      value={fichaData.motivo_consulta}
+                      onChange={(e) => setFichaData({...fichaData, motivo_consulta: e.target.value})}
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="circunstancias" className="text-slate-300">
-                      Circunstancias del Incidente
+                      Circunstancias del Incidente *
                     </Label>
                     <Textarea
                       id="circunstancias"
                       placeholder="Ej: Paciente en domicilio, refiere dolor opresivo irradiado a brazo izquierdo"
                       className="bg-slate-800 border-slate-700 text-white min-h-[80px]"
+                      value={fichaData.circunstancias}
+                      onChange={(e) => setFichaData({...fichaData, circunstancias: e.target.value})}
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="prioridad" className="text-slate-300">
-                      Categorización de Urgencia
+                      Categorización de Urgencia *
                     </Label>
-                    <Select>
+                    <Select value={fichaData.prioridad} onValueChange={(value) => setFichaData({...fichaData, prioridad: value})}>
                       <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                         <SelectValue placeholder="Seleccionar nivel de urgencia" />
                       </SelectTrigger>
@@ -403,22 +714,15 @@ export default function ParamedicoDashboard() {
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                  <Button 
+                    onClick={handleEnviarFicha}
+                    disabled={loading || (!pacienteCreado && !pacienteNN)}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  >
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Enviar al Hospital
-                  </Button>
-                  <Button className="bg-slate-600 hover:bg-slate-500 text-white">
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                      />
-                    </svg>
-                    Guardar Borrador
+                    {loading ? "Enviando..." : "Enviar al Hospital"}
                   </Button>
                 </div>
               </CardContent>
@@ -435,44 +739,57 @@ export default function ParamedicoDashboard() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="medicamento" className="text-slate-300">
-                    Medicamento
+                    Medicamento *
                   </Label>
-                  <Select>
+                  <Select 
+                    value={solicitudData.medicamento}
+                    onValueChange={(value) => setSolicitudData({...solicitudData, medicamento: value})}
+                  >
                     <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                       <SelectValue placeholder="Seleccionar medicamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="aspirina">Aspirina 300mg</SelectItem>
-                      <SelectItem value="morfina">Morfina 10mg</SelectItem>
-                      <SelectItem value="epinefrina">Epinefrina 1mg</SelectItem>
-                      <SelectItem value="nitroglicerina">Nitroglicerina sublingual</SelectItem>
+                      <SelectItem value="Aspirina 300mg">Aspirina 300mg</SelectItem>
+                      <SelectItem value="Morfina 10mg">Morfina 10mg</SelectItem>
+                      <SelectItem value="Epinefrina 1mg">Epinefrina 1mg</SelectItem>
+                      <SelectItem value="Nitroglicerina sublingual">Nitroglicerina sublingual</SelectItem>
+                      <SelectItem value="Adrenalina 1mg">Adrenalina 1mg</SelectItem>
+                      <SelectItem value="Midazolam 5mg">Midazolam 5mg</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="dosis" className="text-slate-300">
-                    Dosis
+                    Dosis *
                   </Label>
                   <Input
                     id="dosis"
                     placeholder="Ej: 300mg vía oral"
                     className="bg-slate-800 border-slate-700 text-white"
+                    value={solicitudData.dosis}
+                    onChange={(e) => setSolicitudData({...solicitudData, dosis: e.target.value})}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="justificacion" className="text-slate-300">
-                    Justificación Clínica
+                    Justificación Clínica *
                   </Label>
                   <Textarea
                     id="justificacion"
                     placeholder="Ej: Sospecha de síndrome coronario agudo, paciente sin contraindicaciones"
                     className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
+                    value={solicitudData.justificacion}
+                    onChange={(e) => setSolicitudData({...solicitudData, justificacion: e.target.value})}
                   />
                 </div>
 
-                <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                <Button 
+                  onClick={handleSolicitarMedicamento}
+                  disabled={loading}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                >
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
@@ -481,7 +798,7 @@ export default function ParamedicoDashboard() {
                       d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
                     />
                   </svg>
-                  Enviar Solicitud al Médico
+                  {loading ? "Enviando..." : "Enviar Solicitud al Médico"}
                 </Button>
               </CardContent>
             </Card>
@@ -494,31 +811,66 @@ export default function ParamedicoDashboard() {
                 <CardDescription className="text-slate-400">Estado de las autorizaciones solicitadas</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  <div className="p-4 border border-amber-500/30 bg-amber-500/5 rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <p className="font-semibold text-white">Aspirina 300mg</p>
-                        <p className="text-sm text-slate-400">Dosis: 300mg vía oral</p>
-                      </div>
-                      <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">Pendiente</Badge>
-                    </div>
-                    <p className="text-sm text-slate-400 mb-2">Justificación: Sospecha de síndrome coronario agudo</p>
-                    <p className="text-xs text-slate-500">Solicitado hace 5 minutos</p>
+                {!Array.isArray(solicitudes) || solicitudes.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-slate-400">No hay solicitudes registradas</p>
                   </div>
-
-                  <div className="p-4 border border-emerald-500/30 bg-emerald-500/5 rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <p className="font-semibold text-white">Morfina 10mg</p>
-                        <p className="text-sm text-slate-400">Dosis: 10mg IV</p>
+                ) : (
+                  <div className="space-y-3">
+                    {solicitudes.map((solicitud) => (
+                      <div 
+                        key={solicitud.id}
+                        className={`p-4 border rounded-lg ${
+                          solicitud.estado === 'pendiente'
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : solicitud.estado === 'autorizada'
+                            ? 'border-emerald-500/30 bg-emerald-500/5'
+                            : 'border-red-500/30 bg-red-500/5'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-semibold text-white">{solicitud.medicamento}</p>
+                            <p className="text-sm text-slate-400">Dosis: {solicitud.dosis}</p>
+                            <p className="text-sm text-slate-400">
+                              Paciente: {solicitud.paciente?.nombre_completo || 'Paciente NN'}
+                            </p>
+                          </div>
+                          <Badge className={
+                            solicitud.estado === 'pendiente'
+                              ? 'bg-amber-500/20 text-amber-500 border-amber-500/30'
+                              : solicitud.estado === 'autorizada'
+                              ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30'
+                              : 'bg-red-500/20 text-red-500 border-red-500/30'
+                          }>
+                            {solicitud.estado === 'pendiente' 
+                              ? 'Pendiente'
+                              : solicitud.estado === 'autorizada'
+                              ? 'Autorizada'
+                              : 'Rechazada'}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-slate-400 mb-2">
+                          Justificación: {solicitud.justificacion}
+                        </p>
+                        {solicitud.autorizado_por && (
+                          <p className="text-sm text-slate-400 mb-2">
+                            {solicitud.estado === 'autorizada' ? 'Autorizado' : 'Rechazado'} por: {solicitud.autorizado_por}
+                          </p>
+                        )}
+                        <p className="text-xs text-slate-500">
+                          {new Date(solicitud.fecha_solicitud).toLocaleString('es-CL', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
                       </div>
-                      <Badge className="bg-emerald-500/20 text-emerald-500 border-emerald-500/30">Autorizado</Badge>
-                    </div>
-                    <p className="text-sm text-slate-400 mb-2">Autorizado por: Dr. Juan Pérez</p>
-                    <p className="text-xs text-slate-500">Hace 15 minutos</p>
+                    ))}
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

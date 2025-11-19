@@ -62,9 +62,8 @@ export function ModalPacienteNN({ open, onOpenChange, onConfirm }: ModalPaciente
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="masculino">Masculino</SelectItem>
-                <SelectItem value="femenino">Femenino</SelectItem>
-                <SelectItem value="indeterminado">Indeterminado</SelectItem>
+                <SelectItem value="Masculino">Masculino</SelectItem>
+                <SelectItem value="Femenino">Femenino</SelectItem>
               </SelectContent>
             </Select>
           </div>

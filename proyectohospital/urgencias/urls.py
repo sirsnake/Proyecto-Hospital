@@ -11,6 +11,7 @@ router.register(r'anamnesis', views.AnamnesisViewSet, basename='anamnesis')
 router.register(r'diagnosticos', views.DiagnosticoViewSet, basename='diagnostico')
 
 urlpatterns = [
+    path('csrf/', views.csrf_token_view, name='csrf-token'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     path('current-user/', views.current_user, name='current-user'),

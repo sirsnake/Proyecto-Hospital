@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSession } from "@/lib/auth"
-import { authAPI } from "@/lib/api"
+import { authAPI, fichasAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -11,12 +11,17 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function TensDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("ambulancias")
   const [selectedPaciente, setSelectedPaciente] = useState<string | null>(null)
+  const [fichasEnRuta, setFichasEnRuta] = useState<any[]>([])
+  const [fichasEnHospital, setFichasEnHospital] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     const currentUser = getSession()
@@ -25,69 +30,73 @@ export default function TensDashboard() {
       return
     }
     setUser(currentUser)
+    cargarFichas()
+    
+    // Recargar fichas cada 30 segundos
+    const interval = setInterval(cargarFichas, 30000)
+    return () => clearInterval(interval)
   }, [router])
+
+  const cargarFichas = async () => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      // Cargar fichas en ruta
+      const enRuta = await fichasAPI.enRuta()
+      console.log('🚑 Fichas en ruta:', enRuta)
+      setFichasEnRuta(Array.isArray(enRuta) ? enRuta : [])
+      
+      // Cargar fichas en hospital
+      const enHospital = await fichasAPI.enHospital()
+      console.log('🏥 Fichas en hospital:', enHospital)
+      setFichasEnHospital(Array.isArray(enHospital) ? enHospital : [])
+      
+      console.log(`📊 Total: ${enRuta.length || 0} en ruta, ${enHospital.length || 0} en hospital`)
+    } catch (err: any) {
+      console.error('Error al cargar fichas:', err)
+      setError(err.message || "Error al cargar fichas")
+      setFichasEnRuta([])
+      setFichasEnHospital([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (!user) return null
 
-  const ambulanciasEnRuta = [
-    {
-      id: "f1",
-      paciente: "Pedro Ramírez González",
-      edad: 40,
-      sexo: "Masculino",
-      motivo: "Dolor torácico intenso hace 30 minutos",
-      prioridad: "C1",
-      eta: "15 minutos",
-      paramedico: "Carlos Muñoz",
-      signosVitales: {
-        presion: "160/95",
-        fc: "110",
-        fr: "24",
-        sato2: "92%",
-        temperatura: "36.8°C",
-        glasgow: "15",
-        eva: "8/10",
-      },
-    },
-    {
-      id: "f2",
-      paciente: "Paciente NN-2025-001",
-      edad: "~30",
-      sexo: "Femenino",
-      motivo: "Encontrada inconsciente en vía pública",
-      prioridad: "C1",
-      eta: "8 minutos",
-      paramedico: "Carlos Muñoz",
-      signosVitales: {
-        presion: "90/60",
-        fc: "55",
-        fr: "10",
-        sato2: "88%",
-        temperatura: "35.5°C",
-        glasgow: "8",
-        eva: "N/A",
-      },
-    },
-  ]
+  // Funciones auxiliares para formatear datos
+  const formatearSignosVitales = (ficha: any) => {
+    const signos = ficha.signos_vitales?.[0] // Tomar el primer registro de signos vitales
+    if (!signos) return null
+    
+    return {
+      presion: `${signos.presion_sistolica}/${signos.presion_diastolica}`,
+      fc: signos.frecuencia_cardiaca.toString(),
+      fr: signos.frecuencia_respiratoria.toString(),
+      sato2: `${signos.saturacion_o2}%`,
+      temperatura: `${signos.temperatura}°C`,
+      glasgow: signos.escala_glasgow?.toString() || "N/A",
+      eva: signos.eva ? `${signos.eva}/10` : "N/A",
+    }
+  }
 
-  const pacientesEnHospital = [
-    {
-      id: "f3",
-      paciente: "María López Fernández",
-      edad: 33,
-      motivo: "Fractura de tobillo por caída",
-      prioridad: "C3",
-      tiempoLlegada: "Hace 30 minutos",
-      signosVitalesIniciales: {
-        presion: "120/80",
-        fc: "85",
-        fr: "18",
-        sato2: "98%",
-        temperatura: "36.5°C",
-        eva: "7/10",
-      },
-    },
-  ]
+  const calcularEdad = (paciente: any) => {
+    if (paciente.es_nn) {
+      return paciente.edad_aproximada ? `~${paciente.edad_aproximada}` : "Desconocida"
+    }
+    if (paciente.fecha_nacimiento) {
+      const hoy = new Date()
+      const nacimiento = new Date(paciente.fecha_nacimiento)
+      let edad = hoy.getFullYear() - nacimiento.getFullYear()
+      const mes = hoy.getMonth() - nacimiento.getMonth()
+      if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
+        edad--
+      }
+      return edad
+    }
+    return "N/A"
+  }
 
   const getPrioridadColor = (prioridad: string) => {
     switch (prioridad) {
@@ -167,116 +176,154 @@ export default function TensDashboard() {
           <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
             <TabsTrigger value="ambulancias">
               Ambulancias en Ruta
-              {ambulanciasEnRuta.length > 0 && <Badge className="ml-2 bg-red-500">{ambulanciasEnRuta.length}</Badge>}
+              {fichasEnRuta.length > 0 && <Badge className="ml-2 bg-red-500">{fichasEnRuta.length}</Badge>}
             </TabsTrigger>
             <TabsTrigger value="hospital">En Hospital</TabsTrigger>
           </TabsList>
 
           <TabsContent value="ambulancias" className="space-y-6">
-            <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <svg className="w-6 h-6 text-red-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-              <div>
-                <p className="font-semibold text-red-500">Alerta: {ambulanciasEnRuta.length} ambulancia(s) en ruta</p>
-                <p className="text-sm text-slate-400">Monitoreo en tiempo real - Preparar recepción de pacientes</p>
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            
+            {loading && fichasEnRuta.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400">Cargando fichas...</p>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <svg className="w-6 h-6 text-red-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <div>
+                    <p className="font-semibold text-red-500">Alerta: {fichasEnRuta.length} ambulancia(s) en ruta</p>
+                    <p className="text-sm text-slate-400">Monitoreo en tiempo real - Preparar recepción de pacientes</p>
+                  </div>
+                  <Button 
+                    onClick={cargarFichas} 
+                    disabled={loading}
+                    variant="outline" 
+                    size="sm"
+                    className="ml-auto"
+                  >
+                    {loading ? "Actualizando..." : "Actualizar"}
+                  </Button>
+                </div>
 
-            <div className="grid gap-6">
-              {ambulanciasEnRuta.map((ambulancia) => (
-                <Card key={ambulancia.id} className="border-slate-800 bg-slate-900/50">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-white flex items-center gap-2">
-                          <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13 10V3L4 14h7v7l9-11h-7z"
-                            />
-                          </svg>
-                          {ambulancia.paciente}
-                        </CardTitle>
-                        <CardDescription className="text-slate-400 mt-1">
-                          {ambulancia.sexo} • {ambulancia.edad} años • Paramédico: {ambulancia.paramedico}
-                        </CardDescription>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <Badge className={getPrioridadColor(ambulancia.prioridad)}>
-                          {getPrioridadLabel(ambulancia.prioridad)}
-                        </Badge>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-white">ETA: {ambulancia.eta}</p>
-                          <p className="text-xs text-slate-400">Tiempo estimado</p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-white mb-2">Motivo de Consulta:</h4>
-                      <p className="text-sm text-slate-300">{ambulancia.motivo}</p>
-                    </div>
+                {fichasEnRuta.length === 0 ? (
+                  <Card className="border-slate-800 bg-slate-900/50">
+                    <CardContent className="py-8 text-center">
+                      <p className="text-slate-400">No hay ambulancias en ruta en este momento</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid gap-6">
+                    {fichasEnRuta.map((ficha) => {
+                      const signosVitales = formatearSignosVitales(ficha)
+                      return (
+                      <Card key={ficha.id} className="border-slate-800 bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <CardTitle className="text-white flex items-center gap-2">
+                                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                                  />
+                                </svg>
+                                {ficha.paciente?.es_nn 
+                                  ? `Paciente NN (${ficha.paciente.id_temporal})`
+                                  : `${ficha.paciente?.nombres || 'Sin nombre'} ${ficha.paciente?.apellidos || ''}`
+                                }
+                              </CardTitle>
+                              <CardDescription className="text-slate-400 mt-1">
+                                {ficha.paciente?.sexo} • {calcularEdad(ficha.paciente)} años • Paramédico: {ficha.paramedico_nombre || 'N/A'}
+                              </CardDescription>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Badge className={getPrioridadColor(ficha.prioridad)}>
+                                {getPrioridadLabel(ficha.prioridad)}
+                              </Badge>
+                              <div className="text-right">
+                                <p className="text-sm font-semibold text-white">ETA: {ficha.eta}</p>
+                                <p className="text-xs text-slate-400">Tiempo estimado</p>
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div>
+                            <h4 className="text-sm font-semibold text-white mb-2">Motivo de Consulta:</h4>
+                            <p className="text-sm text-slate-300">{ficha.motivo_consulta}</p>
+                          </div>
 
-                    <div>
-                      <h4 className="text-sm font-semibold text-white mb-2">Signos Vitales (Paramédico):</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="p-3 bg-slate-800/50 rounded-lg">
-                          <p className="text-xs text-slate-400">Presión Arterial</p>
-                          <p className="text-lg font-semibold text-white">{ambulancia.signosVitales.presion}</p>
-                        </div>
-                        <div className="p-3 bg-slate-800/50 rounded-lg">
-                          <p className="text-xs text-slate-400">FC</p>
-                          <p className="text-lg font-semibold text-white">{ambulancia.signosVitales.fc} lpm</p>
-                        </div>
-                        <div className="p-3 bg-slate-800/50 rounded-lg">
-                          <p className="text-xs text-slate-400">FR</p>
-                          <p className="text-lg font-semibold text-white">{ambulancia.signosVitales.fr} rpm</p>
-                        </div>
-                        <div className="p-3 bg-slate-800/50 rounded-lg">
-                          <p className="text-xs text-slate-400">SatO₂</p>
-                          <p className="text-lg font-semibold text-white">{ambulancia.signosVitales.sato2}</p>
-                        </div>
-                        <div className="p-3 bg-slate-800/50 rounded-lg">
-                          <p className="text-xs text-slate-400">Temperatura</p>
-                          <p className="text-lg font-semibold text-white">{ambulancia.signosVitales.temperatura}</p>
-                        </div>
-                        <div className="p-3 bg-slate-800/50 rounded-lg">
-                          <p className="text-xs text-slate-400">Glasgow</p>
-                          <p className="text-lg font-semibold text-white">{ambulancia.signosVitales.glasgow}</p>
-                        </div>
-                        <div className="p-3 bg-slate-800/50 rounded-lg col-span-2">
-                          <p className="text-xs text-slate-400">EVA (Escala de Dolor)</p>
-                          <p className="text-lg font-semibold text-white">{ambulancia.signosVitales.eva}</p>
-                          <p className="text-xs text-slate-400">
-                            {ambulancia.signosVitales.eva !== "N/A" &&
-                              (Number.parseInt(ambulancia.signosVitales.eva) <= 3
-                                ? "Dolor leve"
-                                : Number.parseInt(ambulancia.signosVitales.eva) <= 6
-                                  ? "Dolor moderado"
-                                  : "Dolor severo")}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                          {ficha.circunstancias && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-white mb-2">Circunstancias:</h4>
+                              <p className="text-sm text-slate-300">{ficha.circunstancias}</p>
+                            </div>
+                          )}
 
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                      <p className="text-sm text-blue-400">
-                        📋 Ambulancia en tránsito - Los datos se actualizan automáticamente
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                          {signosVitales && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-white mb-2">Signos Vitales (Paramédico):</h4>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="p-3 bg-slate-800/50 rounded-lg">
+                                  <p className="text-xs text-slate-400">Presión Arterial</p>
+                                  <p className="text-lg font-semibold text-white">{signosVitales.presion}</p>
+                                </div>
+                                <div className="p-3 bg-slate-800/50 rounded-lg">
+                                  <p className="text-xs text-slate-400">FC</p>
+                                  <p className="text-lg font-semibold text-white">{signosVitales.fc} lpm</p>
+                                </div>
+                                <div className="p-3 bg-slate-800/50 rounded-lg">
+                                  <p className="text-xs text-slate-400">FR</p>
+                                  <p className="text-lg font-semibold text-white">{signosVitales.fr} rpm</p>
+                                </div>
+                                <div className="p-3 bg-slate-800/50 rounded-lg">
+                                  <p className="text-xs text-slate-400">SatO₂</p>
+                                  <p className="text-lg font-semibold text-white">{signosVitales.sato2}</p>
+                                </div>
+                                <div className="p-3 bg-slate-800/50 rounded-lg">
+                                  <p className="text-xs text-slate-400">Temperatura</p>
+                                  <p className="text-lg font-semibold text-white">{signosVitales.temperatura}</p>
+                                </div>
+                                <div className="p-3 bg-slate-800/50 rounded-lg">
+                                  <p className="text-xs text-slate-400">Glasgow</p>
+                                  <p className="text-lg font-semibold text-white">{signosVitales.glasgow}</p>
+                                </div>
+                                <div className="p-3 bg-slate-800/50 rounded-lg col-span-2">
+                                  <p className="text-xs text-slate-400">EVA (Escala de Dolor)</p>
+                                  <p className="text-lg font-semibold text-white">{signosVitales.eva}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                            <p className="text-sm text-blue-400">
+                              📋 Ambulancia en tránsito - Los datos se actualizan automáticamente cada 30 segundos
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                  </div>
+                )}
+              </>
+            )}
           </TabsContent>
 
           <TabsContent value="hospital" className="space-y-6">
@@ -289,71 +336,79 @@ export default function TensDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {pacientesEnHospital.map((paciente) => (
-                    <div key={paciente.id} className="p-4 border border-slate-700 rounded-lg">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h3 className="font-semibold text-white">{paciente.paciente}</h3>
-                          <p className="text-sm text-slate-400">
-                            {paciente.edad} años • {paciente.tiempoLlegada}
+                  {fichasEnHospital.map((ficha) => {
+                    const signosFormateados = formatearSignosVitales(ficha.signos_vitales)
+                    const edad = calcularEdad(ficha.paciente)
+                    const nombrePaciente = ficha.paciente.es_nn 
+                      ? `NN - ${ficha.paciente.id_temporal || 'Sin ID'}`
+                      : `${ficha.paciente.nombres} ${ficha.paciente.apellidos}`
+                    
+                    return (
+                      <div key={ficha.id} className="p-4 border border-slate-700 rounded-lg">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 className="font-semibold text-white">{nombrePaciente}</h3>
+                            <p className="text-sm text-slate-400">
+                              {edad} • Llegó: {new Date(ficha.fecha_actualizacion).toLocaleString('es-CL')}
+                            </p>
+                          </div>
+                          <Badge className={getPrioridadColor(ficha.nivel_prioridad)}>
+                            {getPrioridadLabel(ficha.nivel_prioridad)}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-slate-300 mb-3">{ficha.motivo_consulta}</p>
+
+                        {/* Signos vitales iniciales */}
+                        <div className="mb-4 p-3 bg-slate-800/30 rounded-lg">
+                          <p className="text-xs font-semibold text-slate-400 mb-2">
+                            Signos Vitales (Paramédico):
                           </p>
-                        </div>
-                        <Badge className={getPrioridadColor(paciente.prioridad)}>
-                          {getPrioridadLabel(paciente.prioridad)}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-slate-300 mb-3">{paciente.motivo}</p>
-
-                      {/* Signos vitales iniciales */}
-                      <div className="mb-4 p-3 bg-slate-800/30 rounded-lg">
-                        <p className="text-xs font-semibold text-slate-400 mb-2">
-                          Signos Vitales Iniciales (Paramédico):
-                        </p>
-                        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
-                          <div>
-                            <p className="text-slate-500">PA</p>
-                            <p className="text-white font-semibold">{paciente.signosVitalesIniciales.presion}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-500">FC</p>
-                            <p className="text-white font-semibold">{paciente.signosVitalesIniciales.fc}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-500">FR</p>
-                            <p className="text-white font-semibold">{paciente.signosVitalesIniciales.fr}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-500">SatO₂</p>
-                            <p className="text-white font-semibold">{paciente.signosVitalesIniciales.sato2}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-500">Temp</p>
-                            <p className="text-white font-semibold">{paciente.signosVitalesIniciales.temperatura}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-500">EVA</p>
-                            <p className="text-white font-semibold">{paciente.signosVitalesIniciales.eva}</p>
+                          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                            <div>
+                              <p className="text-slate-500">PA</p>
+                              <p className="text-white font-semibold">{signosFormateados.presion}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">FC</p>
+                              <p className="text-white font-semibold">{signosFormateados.fc}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">FR</p>
+                              <p className="text-white font-semibold">{signosFormateados.fr}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">SatO₂</p>
+                              <p className="text-white font-semibold">{signosFormateados.sato2}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">Temp</p>
+                              <p className="text-white font-semibold">{signosFormateados.temperatura}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">EVA</p>
+                              <p className="text-white font-semibold">{signosFormateados.eva}</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <Button
-                        size="sm"
-                        className="w-full bg-blue-600 hover:bg-blue-700"
-                        onClick={() => setSelectedPaciente(paciente.id)}
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                          />
-                        </svg>
-                        Verificar Signos Vitales
-                      </Button>
-                    </div>
-                  ))}
+                        <Button
+                          size="sm"
+                          className="w-full bg-blue-600 hover:bg-blue-700"
+                          onClick={() => setSelectedPaciente(ficha.id)}
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                            />
+                          </svg>
+                          Verificar Signos Vitales
+                        </Button>
+                      </div>
+                    )
+                  })}
                 </div>
               </CardContent>
             </Card>

@@ -13,8 +13,36 @@ function getCookie(name: string): string | null {
   return null
 }
 
+// Obtener CSRF token desde Django si no existe
+let csrfTokenPromise: Promise<void> | null = null
+async function ensureCSRFToken() {
+  if (csrfTokenPromise) {
+    return csrfTokenPromise
+  }
+  
+  if (getCookie('csrftoken')) {
+    return Promise.resolve()
+  }
+  
+  csrfTokenPromise = fetch(`${API_URL}/csrf/`, {
+    credentials: 'include',
+  }).then(() => {
+    csrfTokenPromise = null
+  }).catch((err) => {
+    csrfTokenPromise = null
+    console.error('Error obteniendo CSRF token:', err)
+  })
+  
+  return csrfTokenPromise
+}
+
 // Configuración de fetch con credenciales y CSRF
 const fetchWithCredentials = async (url: string, options: RequestInit = {}) => {
+  // Para operaciones POST, PUT, DELETE, asegurar que tenemos el CSRF token
+  if (options.method && options.method !== 'GET') {
+    await ensureCSRFToken()
+  }
+  
   const csrfToken = getCookie('csrftoken')
   
   const defaultOptions: RequestInit = {
@@ -30,7 +58,32 @@ const fetchWithCredentials = async (url: string, options: RequestInit = {}) => {
   
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Error en la solicitud' }))
-    throw new Error(error.detail || error.message || 'Error en la solicitud')
+    console.error('Error del servidor:', error)
+    
+    // Si hay errores de validación, mostrarlos todos
+    if (error && typeof error === 'object' && !error.detail && !error.message) {
+      const errorMessages = Object.entries(error).map(([field, messages]) => {
+        // Si el mensaje es un objeto (como signos_vitales_data), convertirlo a string legible
+        if (typeof messages === 'object' && messages !== null && !Array.isArray(messages)) {
+          const subErrors = Object.entries(messages as Record<string, any>).map(([subField, subMessages]) => {
+            const subMessageArray = Array.isArray(subMessages) ? subMessages : [subMessages]
+            return `${subField}: ${subMessageArray.join(', ')}`
+          }).join('; ')
+          return `${field} → ${subErrors}`
+        }
+        
+        const messageArray = Array.isArray(messages) ? messages : [messages]
+        const fieldName = field === 'rut' ? 'RUT' : 
+                         field === 'nombres' ? 'Nombres' :
+                         field === 'apellidos' ? 'Apellidos' :
+                         field === 'sexo' ? 'Sexo' :
+                         field === 'non_field_errors' ? 'Error' : field
+        return `${fieldName}: ${messageArray.join(', ')}`
+      }).join('; ')
+      throw new Error(errorMessages || `Error ${response.status}`)
+    }
+    
+    throw new Error(error.detail || error.message || `Error ${response.status}: ${response.statusText}`)
   }
 
   // Si la respuesta está vacía, retornar objeto vacío

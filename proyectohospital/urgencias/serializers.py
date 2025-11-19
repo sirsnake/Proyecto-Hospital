@@ -74,6 +74,15 @@ class SignosVitalesSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'timestamp']
 
 
+class SignosVitalesCreateSerializer(serializers.ModelSerializer):
+    """Serializer para crear signos vitales (sin requerir ficha)"""
+    
+    class Meta:
+        model = SignosVitales
+        exclude = ['ficha']  # Excluir ficha porque se asignará automáticamente
+        read_only_fields = ['id', 'timestamp']
+
+
 class SolicitudMedicamentoSerializer(serializers.ModelSerializer):
     """Serializer para solicitudes de medicamentos"""
     paramedico_nombre = serializers.CharField(source='paramedico.get_full_name', read_only=True)
@@ -127,7 +136,7 @@ class FichaEmergenciaSerializer(serializers.ModelSerializer):
 
 class FichaEmergenciaCreateSerializer(serializers.ModelSerializer):
     """Serializer simplificado para crear fichas de emergencia"""
-    signos_vitales_data = SignosVitalesSerializer(write_only=True)
+    signos_vitales_data = SignosVitalesCreateSerializer(write_only=True)
     
     class Meta:
         model = FichaEmergencia
