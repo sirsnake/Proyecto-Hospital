@@ -134,6 +134,17 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
         
         return queryset
     
+    def create(self, request, *args, **kwargs):
+        """Sobrescribir create para devolver la respuesta con el serializer completo"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ficha = serializer.save()
+        
+        # Devolver la ficha completa con todos los datos
+        output_serializer = FichaEmergenciaSerializer(ficha)
+        headers = self.get_success_headers(output_serializer.data)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
     @action(detail=False, methods=['get'])
     def en_ruta(self, request):
         """Obtener fichas en ruta"""

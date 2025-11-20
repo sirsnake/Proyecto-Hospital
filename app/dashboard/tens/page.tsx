@@ -32,8 +32,8 @@ export default function TensDashboard() {
     setUser(currentUser)
     cargarFichas()
     
-    // Recargar fichas cada 30 segundos
-    const interval = setInterval(cargarFichas, 30000)
+    // Recargar fichas cada 60 segundos
+    const interval = setInterval(cargarFichas, 60000)
     return () => clearInterval(interval)
   }, [router])
 
@@ -359,37 +359,43 @@ export default function TensDashboard() {
                         <p className="text-sm text-slate-300 mb-3">{ficha.motivo_consulta}</p>
 
                         {/* Signos vitales iniciales */}
-                        <div className="mb-4 p-3 bg-slate-800/30 rounded-lg">
-                          <p className="text-xs font-semibold text-slate-400 mb-2">
-                            Signos Vitales (Paramédico):
-                          </p>
-                          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
-                            <div>
-                              <p className="text-slate-500">PA</p>
-                              <p className="text-white font-semibold">{signosFormateados.presion}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500">FC</p>
-                              <p className="text-white font-semibold">{signosFormateados.fc}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500">FR</p>
-                              <p className="text-white font-semibold">{signosFormateados.fr}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500">SatO₂</p>
+                        {signosFormateados ? (
+                          <div className="mb-4 p-3 bg-slate-800/30 rounded-lg">
+                            <p className="text-xs font-semibold text-slate-400 mb-2">
+                              Signos Vitales (Paramédico):
+                            </p>
+                            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                              <div>
+                                <p className="text-slate-500">PA</p>
+                                <p className="text-white font-semibold">{signosFormateados.presion}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">FC</p>
+                                <p className="text-white font-semibold">{signosFormateados.fc}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">FR</p>
+                                <p className="text-white font-semibold">{signosFormateados.fr}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">SatO₂</p>
                               <p className="text-white font-semibold">{signosFormateados.sato2}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500">Temp</p>
-                              <p className="text-white font-semibold">{signosFormateados.temperatura}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500">EVA</p>
-                              <p className="text-white font-semibold">{signosFormateados.eva}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">Temp</p>
+                                <p className="text-white font-semibold">{signosFormateados.temperatura}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">EVA</p>
+                                <p className="text-white font-semibold">{signosFormateados.eva}</p>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                            <p className="text-sm text-amber-500">⚠️ Sin signos vitales registrados</p>
+                          </div>
+                        )}
 
                         <Button
                           size="sm"

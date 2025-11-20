@@ -17,7 +17,6 @@ import { ModalDiagnostico } from "@/components/modal-diagnostico"
 export default function MedicoDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState("casos")
   const [fichasActivas, setFichasActivas] = useState<any[]>([])
   const [solicitudesPendientes, setSolicitudesPendientes] = useState<any[]>([])
   const [modalDiagnosticoOpen, setModalDiagnosticoOpen] = useState(false)
@@ -36,8 +35,8 @@ export default function MedicoDashboard() {
     setUser(currentUser)
     cargarDatos()
     
-    // Auto-refresh cada 60 segundos
-    const interval = setInterval(cargarDatos, 60000)
+    // Auto-refresh cada 30 segundos
+    const interval = setInterval(cargarDatos, 30000)
     return () => clearInterval(interval)
   }, [router])
 
@@ -47,71 +46,16 @@ export default function MedicoDashboard() {
       setError("")
       
       // Cargar fichas en hospital
-      const fichasResponse = await fichasAPI.enHospital()
-      console.log('🏥 Respuesta fichas en hospital:', fichasResponse)
-      
-      // Transformar datos de snake_case a camelCase
-      const fichasTransformadas = (Array.isArray(fichasResponse) ? fichasResponse : []).map((ficha: any) => ({
-        id: ficha.id,
-        paciente: {
-          id: ficha.paciente?.id,
-          rut: ficha.paciente?.rut,
-          nombres: ficha.paciente?.nombres,
-          apellidos: ficha.paciente?.apellidos,
-          sexo: ficha.paciente?.sexo,
-          esNN: ficha.paciente?.es_nn || false,
-          idTemporal: ficha.paciente?.id_temporal
-        },
-        paramedico: ficha.paramedico_nombre || `Paramédico #${ficha.paramedico}`,
-        motivoConsulta: ficha.motivo_consulta,
-        circunstancias: ficha.circunstancias,
-        sintomas: ficha.sintomas,
-        nivelConsciencia: ficha.nivel_consciencia,
-        estado: ficha.estado,
-        prioridad: ficha.prioridad,
-        eta: ficha.eta,
-        signosVitales: ficha.signos_vitales ? {
-          presionSistolica: ficha.signos_vitales.presion_sistolica,
-          presionDiastolica: ficha.signos_vitales.presion_diastolica,
-          frecuenciaCardiaca: ficha.signos_vitales.frecuencia_cardiaca,
-          frecuenciaRespiratoria: ficha.signos_vitales.frecuencia_respiratoria,
-          saturacionO2: ficha.signos_vitales.saturacion_o2,
-          temperatura: ficha.signos_vitales.temperatura,
-          glucosa: ficha.signos_vitales.glucosa,
-          escalaGlasgow: ficha.signos_vitales.escala_glasgow,
-          eva: ficha.signos_vitales.eva
-        } : null,
-        anamnesis: ficha.anamnesis ? {
-          tens: ficha.anamnesis.tens_nombre || `TENS #${ficha.anamnesis.tens}`,
-          antecedentesMorbidos: ficha.anamnesis.antecedentes_morbidos,
-          medicamentosHabituales: ficha.anamnesis.medicamentos_habituales,
-          alergiasMedicamentosas: ficha.anamnesis.alergias_medicamentosas || [],
-          alergiasCriticas: (ficha.anamnesis.alergias_medicamentosas || []).length > 0,
-          antecedentesQuirurgicos: ficha.anamnesis.antecedentes_quirurgicos
-        } : null
-      }))
-      
-      console.log('🏥 Fichas transformadas:', fichasTransformadas)
-      setFichasActivas(fichasTransformadas)
+      const fichas = await fichasAPI.enHospital()
+      console.log('🏥 Fichas en hospital:', fichas)
+      setFichasActivas(Array.isArray(fichas) ? fichas : [])
       
       // Cargar solicitudes pendientes
-      const solicitudesResponse = await solicitudesMedicamentosAPI.pendientes()
-      console.log('💊 Respuesta solicitudes:', solicitudesResponse)
-      
-      const solicitudesTransformadas = (Array.isArray(solicitudesResponse) ? solicitudesResponse : []).map((sol: any) => ({
-        id: sol.id,
-        ficha: sol.ficha,
-        paramedico: sol.paramedico_nombre || `Paramédico #${sol.paramedico}`,
-        medicamento: sol.medicamento,
-        dosis: sol.dosis,
-        justificacion: sol.justificacion,
-        estado: sol.estado
-      }))
-      
-      console.log('💊 Solicitudes transformadas:', solicitudesTransformadas)
-      setSolicitudesPendientes(solicitudesTransformadas)
+      const solicitudes = await solicitudesMedicamentosAPI.pendientes()
+      console.log('💊 Solicitudes pendientes:', solicitudes)
+      setSolicitudesPendientes(Array.isArray(solicitudes) ? solicitudes : [])
     } catch (err: any) {
-      console.error('❌ Error al cargar datos:', err)
+      console.error('Error al cargar datos:', err)
       setError(err.message || "Error al cargar datos")
       setFichasActivas([])
       setSolicitudesPendientes([])
@@ -195,17 +139,6 @@ export default function MedicoDashboard() {
     }
   }
 
-  const handleCerrarSesion = async () => {
-    try {
-      await authAPI.logout()
-    } catch (error) {
-      console.error('Error al cerrar sesión:', error)
-    } finally {
-      localStorage.removeItem("medical_system_user")
-      router.push("/")
-    }
-  }
-
   if (!user) return null
 
   return (
@@ -236,19 +169,6 @@ export default function MedicoDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        {/* Mensajes de éxito y error */}
-        {success && (
-          <Alert className="mb-6 bg-emerald-500/10 border-emerald-500/30 text-emerald-500">
-            <AlertDescription>{success}</AlertDescription>
-          </Alert>
-        )}
-        
-        {error && (
-          <Alert className="mb-6 bg-red-500/10 border-red-500/30 text-red-500">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
         {solicitudesPendientes.length > 0 && (
           <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
             <div className="flex items-center gap-3">
@@ -270,7 +190,7 @@ export default function MedicoDashboard() {
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs defaultValue="casos" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 lg:w-[600px]">
             <TabsTrigger value="casos">Casos Activos</TabsTrigger>
             <TabsTrigger value="autorizaciones">
@@ -284,37 +204,8 @@ export default function MedicoDashboard() {
 
           {/* Casos Activos */}
           <TabsContent value="casos" className="space-y-6">
-            {fichasActivas.length === 0 ? (
-              <Card className="border-slate-800 bg-slate-900/50">
-                <CardContent className="py-12">
-                  <div className="text-center">
-                    <svg
-                      className="w-16 h-16 text-slate-600 mx-auto mb-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                    <p className="text-slate-400 mb-2">No hay casos activos en este momento</p>
-                    <p className="text-sm text-slate-500">Los pacientes que lleguen al hospital aparecerán aquí</p>
-                    <Button onClick={cargarDatos} variant="outline" className="mt-4 border-slate-700">
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Actualizar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4">
-                {fichasActivas.map((ficha) => (
+            <div className="grid gap-4">
+              {fichasActivas.map((ficha) => (
                 <Card key={ficha.id} className="border-slate-800 bg-slate-900/50">
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -465,8 +356,7 @@ export default function MedicoDashboard() {
                   </CardContent>
                 </Card>
               ))}
-              </div>
-            )}
+            </div>
           </TabsContent>
 
           {/* Autorizaciones de Medicamentos */}
@@ -514,41 +404,30 @@ export default function MedicoDashboard() {
                           <p className="text-sm text-slate-400">{solicitud.justificacion}</p>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="flex gap-2">
                           <Button
-                            className="w-full bg-emerald-600 hover:bg-emerald-700"
-                            onClick={() => handleAutorizarMedicamento(solicitud.id)}
-                            disabled={loading}
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => handleAutorizarMedicamento(solicitud.id, true)}
                           >
                             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            Autorizar Medicamento
+                            Autorizar
                           </Button>
-                          
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="Motivo de rechazo..."
-                              value={motivoRechazo[solicitud.id] || ""}
-                              onChange={(e) => setMotivoRechazo({ ...motivoRechazo, [solicitud.id]: e.target.value })}
-                              className="flex-1 bg-slate-800 border-slate-700 text-white"
-                            />
-                            <Button
-                              className="bg-red-600 hover:bg-red-700 text-white"
-                              onClick={() => handleRechazarMedicamento(solicitud.id)}
-                              disabled={loading || !motivoRechazo[solicitud.id]}
-                            >
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                              Rechazar
-                            </Button>
-                          </div>
+                          <Button
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => handleAutorizarMedicamento(solicitud.id, false)}
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                            Rechazar
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -646,7 +525,11 @@ export default function MedicoDashboard() {
                       />
                     </svg>
                     <p className="text-slate-400 mb-4">Selecciona un caso activo para realizar el diagnóstico</p>
-                    <Button onClick={() => setActiveTab("casos")}>
+                    <Button
+                      onClick={() =>
+                        document.querySelector('[value="casos"]')?.dispatchEvent(new Event("click", { bubbles: true }))
+                      }
+                    >
                       Ver Casos Activos
                     </Button>
                   </div>

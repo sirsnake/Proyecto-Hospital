@@ -59,6 +59,10 @@ export default function ParamedicoDashboard() {
     eta: "15 minutos"
   })
 
+  // Estado para ubicación GPS
+  const [ubicacionActual, setUbicacionActual] = useState<{ lat: number; lng: number } | null>(null)
+  const [distanciaHospital, setDistanciaHospital] = useState<number | null>(null)
+
   // Estados del formulario de solicitud de medicamento
   const [solicitudData, setSolicitudData] = useState({
     medicamento: "",
@@ -77,7 +81,67 @@ export default function ParamedicoDashboard() {
     }
     setUser(currentUser)
     cargarSolicitudes()
+    obtenerUbicacion()
+    
+    // Actualizar ubicación cada 30 segundos
+    const locationInterval = setInterval(obtenerUbicacion, 30000)
+    return () => clearInterval(locationInterval)
   }, [router])
+
+  // Coordenadas del Hospital
+  const HOSPITAL_COORDS = {
+    lat: -34.15462129250732,
+    lng: -70.76652799358591
+  }
+
+  const obtenerUbicacion = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const coords = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          }
+          setUbicacionActual(coords)
+          calcularDistanciaYETA(coords)
+          console.log('📍 Ubicación actualizada:', coords)
+        },
+        (error) => {
+          console.warn('⚠️ No se pudo obtener ubicación GPS:', error.message)
+          // No mostrar error al usuario, usar ETA manual
+        }
+      )
+    }
+  }
+
+  const calcularDistanciaYETA = (coords: { lat: number; lng: number }) => {
+    // Fórmula de Haversine para calcular distancia entre dos coordenadas
+    const R = 6371 // Radio de la Tierra en km
+    const dLat = (HOSPITAL_COORDS.lat - coords.lat) * Math.PI / 180
+    const dLng = (HOSPITAL_COORDS.lng - coords.lng) * Math.PI / 180
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(coords.lat * Math.PI / 180) * Math.cos(HOSPITAL_COORDS.lat * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    const distancia = R * c // Distancia en km
+
+    setDistanciaHospital(distancia)
+
+    // Calcular ETA asumiendo velocidad promedio de ambulancia en ciudad
+    // Ajustado a 15 km/h para considerar tráfico, semáforos, curvas, etc.
+    const velocidadPromedio = 15 // km/h (velocidad efectiva en ciudad)
+    const tiempoHoras = distancia / velocidadPromedio
+    const tiempoMinutos = Math.ceil(tiempoHoras * 60)
+
+    // Actualizar ETA en el formulario
+    const etaTexto = tiempoMinutos <= 60 
+      ? `${tiempoMinutos} minutos`
+      : `${Math.floor(tiempoMinutos / 60)}h ${tiempoMinutos % 60}min`
+    
+    setFichaData(prev => ({ ...prev, eta: etaTexto }))
+    console.log(`🚑 Distancia al hospital: ${distancia.toFixed(1)} km - ETA: ${etaTexto}`)
+  }
 
   const cargarSolicitudes = async () => {
     try {
@@ -142,8 +206,8 @@ export default function ParamedicoDashboard() {
           return
         }
       } catch (searchErr) {
-        // Si falla la búsqueda, continuar con la creación
-        console.log('No se encontró paciente existente, procediendo a crear')
+        // Si falla la búsqueda, continuar con la creación (esto es normal para pacientes nuevos)
+        console.log('ℹ️ Paciente nuevo, procediendo a crear registro')
       }
       
       const data = {
@@ -209,20 +273,26 @@ export default function ParamedicoDashboard() {
       }
       
       console.log('📤 Enviando ficha:', fichaCompleta)
+      console.log('📤 Validando campos:', {
+        paciente_id: fichaCompleta.paciente,
+        paramedico_id: fichaCompleta.paramedico,
+        tiene_motivo: !!fichaCompleta.motivo_consulta,
+        tiene_circunstancias: !!fichaCompleta.circunstancias,
+        tiene_prioridad: !!fichaCompleta.prioridad,
+        presion_sistolica: fichaCompleta.signos_vitales_data.presion_sistolica
+      })
       
       const response = await fichasAPI.crear(fichaCompleta)
       console.log('✅ Respuesta del servidor:', response)
       
       if (response && response.id) {
-        setSuccess(`¡Ficha #${response.id} enviada al hospital exitosamente!`)
+        setSuccess(`¡Ficha #${response.id} enviada al hospital exitosamente! Ahora puede solicitar medicamentos si es necesario.`)
       } else {
         setSuccess("¡Ficha enviada al hospital exitosamente!")
       }
       
-      // Limpiar formularios
-      setPacienteData({
-        rut: "", nombres: "", apellidos: "", sexo: "", fecha_nacimiento: "", telefono: "", direccion: ""
-      })
+      // Limpiar solo los formularios de signos vitales y ficha
+      // NO limpiar pacienteCreado/pacienteNN para poder solicitar medicamentos después
       setSignosData({
         presion_sistolica: "", presion_diastolica: "", frecuencia_cardiaca: "",
         frecuencia_respiratoria: "", saturacion_o2: "", temperatura: "",
@@ -232,12 +302,13 @@ export default function ParamedicoDashboard() {
         motivo_consulta: "", circunstancias: "", sintomas: "",
         nivel_consciencia: "", prioridad: "", eta: "15 minutos"
       })
-      setPacienteCreado(null)
-      setPacienteNN(null)
+      // Mantener pacienteCreado y pacienteNN para poder solicitar medicamentos
       
       setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
-      console.error('Error completo:', err)
+      console.error('❌ Error completo:', err)
+      console.error('❌ Mensaje de error:', err.message)
+      console.error('❌ Stack:', err.stack)
       setError(err.message || "Error al enviar ficha")
     } finally {
       setLoading(false)
@@ -245,44 +316,68 @@ export default function ParamedicoDashboard() {
   }
 
   const handleSolicitarMedicamento = async () => {
+    console.log('🚀 handleSolicitarMedicamento iniciado')
+    console.log('📝 Datos de solicitud:', solicitudData)
+    
     try {
       setLoading(true)
       setError("")
       
       if (!solicitudData.medicamento || !solicitudData.dosis || !solicitudData.justificacion) {
+        console.log('❌ Validación fallida: campos incompletos')
         setError("Complete todos los campos de la solicitud")
         return
       }
+      console.log('✅ Validación campos OK')
       
+      console.log('🔍 Verificando paciente:', { pacienteCreado, pacienteNN })
       if (!pacienteCreado && !pacienteNN) {
+        console.log('❌ Validación fallida: no hay paciente registrado')
         setError("Primero debe registrar un paciente y crear una ficha")
         return
       }
+      console.log('✅ Validación paciente OK')
       
-      // Aquí necesitarías tener el ID de la ficha creada
-      // Por simplicidad, asumimos que hay una ficha reciente
-      const fichas = await fichasAPI.listar({ paramedico: user.id, estado: 'en_ruta' })
-      if (fichas.length === 0) {
-        setError("No hay fichas activas para solicitar medicamentos")
+      // Buscar fichas del paramédico en ruta o en hospital
+      console.log('🔍 Buscando fichas del paramédico:', user.id)
+      const response = await fichasAPI.listar({ paramedico: user.id })
+      console.log('📋 Respuesta completa:', response)
+      
+      // La API devuelve un objeto con results
+      const fichas = response.results || []
+      console.log('📋 Fichas extraídas:', fichas.length, 'fichas encontradas')
+      
+      if (!Array.isArray(fichas) || fichas.length === 0) {
+        setError("⚠️ No hay fichas enviadas. Primero debe: 1) Registrar un paciente, 2) Llenar los signos vitales y 3) Enviar la ficha al hospital.")
         return
       }
       
+      console.log('📋 Usando ficha más reciente:', fichas[0])
+      
+      // Usar la ficha más reciente
+      const fichaReciente = fichas[0]
+      
       const solicitud = {
-        ficha: fichas[0].id,
+        ficha: fichaReciente.id,
         paramedico: user.id,
         medicamento: solicitudData.medicamento,
         dosis: solicitudData.dosis,
         justificacion: solicitudData.justificacion
       }
       
-      await solicitudesMedicamentosAPI.crear(solicitud)
-      setSuccess("Solicitud de medicamento enviada al médico")
+      console.log('💊 Enviando solicitud de medicamento:', solicitud)
+      const resultado = await solicitudesMedicamentosAPI.crear(solicitud)
+      console.log('✅ Solicitud creada:', resultado)
+      
+      setSuccess(`Solicitud de medicamento enviada al médico (Ficha #${fichaReciente.id})`)
       setSolicitudData({ medicamento: "", dosis: "", justificacion: "" })
       await cargarSolicitudes()
       setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
+      console.error('❌ Error en handleSolicitarMedicamento:', err)
       setError(err.message || "Error al enviar solicitud")
     } finally {
+      console.log('🏁 handleSolicitarMedicamento finalizado')
       setLoading(false)
     }
   }
@@ -305,10 +400,22 @@ export default function ParamedicoDashboard() {
                 />
               </svg>
             </div>
-            <div>
+            <div className="flex-1">
               <h1 className="text-lg font-bold text-white">Sistema de Urgencias</h1>
               <p className="text-sm text-slate-400">Paramédico: {user.nombre_completo || user.first_name + ' ' + user.last_name}</p>
             </div>
+            {ubicacionActual && distanciaHospital !== null && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <div>
+                  <p className="text-xs text-emerald-500 font-semibold">GPS Activo</p>
+                  <p className="text-xs text-emerald-400">{distanciaHospital.toFixed(1)} km del hospital</p>
+                </div>
+              </div>
+            )}
           </div>
           <Button
             variant="outline"
@@ -350,10 +457,34 @@ export default function ParamedicoDashboard() {
           <TabsContent value="registro" className="space-y-6">
             <Card className="border-slate-800 bg-slate-900/50">
               <CardHeader>
-                <CardTitle className="text-white">Registro de Paciente en Terreno</CardTitle>
-                <CardDescription className="text-slate-400">
-                  Complete los datos mínimos del paciente y signos vitales
-                </CardDescription>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-white">Registro de Paciente en Terreno</CardTitle>
+                    <CardDescription className="text-slate-400">
+                      Complete los datos mínimos del paciente y signos vitales
+                    </CardDescription>
+                  </div>
+                  {(pacienteCreado || pacienteNN) && (
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        setPacienteCreado(null)
+                        setPacienteNN(null)
+                        setPacienteData({
+                          rut: "", nombres: "", apellidos: "", sexo: "", fecha_nacimiento: "", telefono: "", direccion: ""
+                        })
+                        setSuccess("Listo para registrar un nuevo paciente")
+                        setTimeout(() => setSuccess(""), 3000)
+                      }}
+                      className="border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Nuevo Paciente
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Datos del Paciente */}
@@ -711,6 +842,54 @@ export default function ParamedicoDashboard() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* ETA Calculado Automáticamente */}
+                  <div className="space-y-2">
+                    <Label className="text-slate-300 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Tiempo Estimado de Llegada (ETA)
+                    </Label>
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {ubicacionActual ? (
+                            <>
+                              <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div>
+                                <p className="text-sm font-semibold text-emerald-500">Calculado automáticamente</p>
+                                <p className="text-xs text-slate-400">Basado en tu ubicación GPS actual</p>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                              <div>
+                                <p className="text-sm font-semibold text-amber-500">Estimación manual</p>
+                                <p className="text-xs text-slate-400">GPS no disponible</p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-white">{fichaData.eta}</p>
+                          {distanciaHospital && (
+                            <p className="text-xs text-slate-400">{distanciaHospital.toFixed(1)} km</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {!ubicacionActual && (
+                      <p className="text-xs text-slate-400">
+                        💡 Permite el acceso a tu ubicación para calcular el ETA automáticamente
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -786,7 +965,10 @@ export default function ParamedicoDashboard() {
                 </div>
 
                 <Button 
-                  onClick={handleSolicitarMedicamento}
+                  onClick={() => {
+                    console.log('🔘 BOTÓN CLICKEADO - handleSolicitarMedicamento existe:', typeof handleSolicitarMedicamento)
+                    handleSolicitarMedicamento()
+                  }}
                   disabled={loading}
                   className="w-full bg-blue-600 hover:bg-blue-700"
                 >
