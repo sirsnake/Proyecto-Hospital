@@ -134,11 +134,14 @@ export const pacientesAPI = {
     })
   },
 
-  buscar: async (rut?: string, idTemporal?: string) => {
+  buscar: async (query: string) => {
     const params = new URLSearchParams()
-    if (rut) params.append('rut', rut)
-    if (idTemporal) params.append('id_temporal', idTemporal)
+    params.append('q', query)
     return fetchWithCredentials(`${API_URL}/pacientes/buscar/?${params}`)
+  },
+
+  historial: async (id: number) => {
+    return fetchWithCredentials(`${API_URL}/pacientes/${id}/historial/`)
   },
 }
 
@@ -276,5 +279,40 @@ export const diagnosticosAPI = {
 
   porFicha: async (fichaId: number) => {
     return fetchWithCredentials(`${API_URL}/diagnosticos/?ficha=${fichaId}`)
+  },
+}
+
+// Solicitudes de Exámenes
+export const solicitudesExamenesAPI = {
+  crear: async (data: any) => {
+    return fetchWithCredentials(`${API_URL}/solicitudes-examenes/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  listar: async () => {
+    return fetchWithCredentials(`${API_URL}/solicitudes-examenes/`)
+  },
+
+  pendientes: async () => {
+    return fetchWithCredentials(`${API_URL}/solicitudes-examenes/pendientes/`)
+  },
+
+  porFicha: async (fichaId: number) => {
+    return fetchWithCredentials(`${API_URL}/solicitudes-examenes/?ficha=${fichaId}`)
+  },
+
+  marcarProceso: async (id: number) => {
+    return fetchWithCredentials(`${API_URL}/solicitudes-examenes/${id}/marcar_proceso/`, {
+      method: 'POST',
+    })
+  },
+
+  completar: async (id: number, resultados: string, observaciones?: string) => {
+    return fetchWithCredentials(`${API_URL}/solicitudes-examenes/${id}/completar/`, {
+      method: 'POST',
+      body: JSON.stringify({ resultados, observaciones }),
+    })
   },
 }

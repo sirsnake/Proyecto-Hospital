@@ -1,7 +1,7 @@
 "use client"
 
 import { Input } from "@/components/ui/input"
-
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -27,9 +27,28 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
     tipoAlta: "",
   })
 
+  const [error, setError] = useState("")
+
   const handleConfirm = () => {
+    setError("")
+    
+    if (!formData.codigoCIE10 || !formData.diagnostico || !formData.indicaciones || !formData.tipoAlta) {
+      setError('⚠️ Por favor complete todos los campos obligatorios: Código CIE-10, Diagnóstico, Indicaciones y Tipo de Alta')
+      return
+    }
+    
+    console.log('📋 Datos del diagnóstico a enviar:', formData)
     onConfirm(formData)
-    onOpenChange(false)
+    
+    // Resetear formulario
+    setFormData({
+      codigoCIE10: "",
+      diagnostico: "",
+      descripcion: "",
+      indicaciones: "",
+      medicamentos: "",
+      tipoAlta: "",
+    })
   }
 
   if (!ficha) return null
@@ -84,6 +103,13 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
             </div>
           )}
 
+          {/* Error Alert */}
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500 rounded-lg">
+              <p className="text-sm font-semibold text-red-500">{error}</p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="codigo-cie10" className="text-slate-300">
               Código CIE-10 <span className="text-red-500">*</span>
@@ -112,11 +138,11 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
 
           <div className="space-y-2">
             <Label htmlFor="descripcion" className="text-slate-300">
-              Descripción Detallada del Diagnóstico
+              Observaciones Adicionales
             </Label>
             <Textarea
               id="descripcion"
-              placeholder="Descripción completa del cuadro clínico y hallazgos..."
+              placeholder="Detalles adicionales del cuadro clínico, evolución, hallazgos..."
               value={formData.descripcion}
               onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
               className="bg-slate-800 border-slate-700 text-white min-h-[100px]"

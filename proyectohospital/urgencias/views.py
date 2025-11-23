@@ -6,12 +6,13 @@ from django.contrib.auth import login, logout
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.db.models import Q
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico
+from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
 from .serializers import (
     UsuarioSerializer, LoginSerializer, PacienteSerializer, 
     FichaEmergenciaSerializer, FichaEmergenciaCreateSerializer,
-    SignosVitalesSerializer, SolicitudMedicamentoSerializer,
-    AnamnesisSerializer, DiagnosticoSerializer
+    SignosVitalesSerializer, SignosVitalesCreateSerializer,
+    SolicitudMedicamentoSerializer, AnamnesisSerializer, 
+    DiagnosticoSerializer, SolicitudExamenSerializer
 )
 
 
@@ -82,25 +83,51 @@ class PacienteViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def buscar(self, request):
-        """Buscar paciente por RUT o ID temporal"""
-        rut = request.query_params.get('rut')
-        id_temporal = request.query_params.get('id_temporal')
+        """Buscar pacientes por RUT, nombre, apellido o ID temporal"""
+        q = request.query_params.get('q', '').strip()
         
-        if rut:
-            try:
-                paciente = Paciente.objects.get(rut=rut)
-                return Response(PacienteSerializer(paciente).data)
-            except Paciente.DoesNotExist:
-                return Response({'error': 'Paciente no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        if not q:
+            return Response({'error': 'Debe proporcionar un término de búsqueda'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if id_temporal:
-            try:
-                paciente = Paciente.objects.get(id_temporal=id_temporal)
-                return Response(PacienteSerializer(paciente).data)
-            except Paciente.DoesNotExist:
-                return Response({'error': 'Paciente no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        # Buscar por RUT exacto primero
+        pacientes = Paciente.objects.filter(rut__iexact=q)
         
-        return Response({'error': 'Debe proporcionar RUT o ID temporal'}, status=status.HTTP_400_BAD_REQUEST)
+        # Si no se encuentra por RUT, buscar por nombre/apellido
+        if not pacientes.exists():
+            pacientes = Paciente.objects.filter(
+                Q(nombres__icontains=q) | 
+                Q(apellidos__icontains=q) |
+                Q(id_temporal__icontains=q)
+            )
+        
+        # Limitar a 10 resultados
+        pacientes = pacientes[:10]
+        
+        if not pacientes.exists():
+            return Response([], status=status.HTTP_200_OK)
+        
+        return Response(PacienteSerializer(pacientes, many=True).data)
+    
+    @action(detail=True, methods=['get'])
+    def historial(self, request, pk=None):
+        """Obtener historial completo de un paciente"""
+        paciente = self.get_object()
+        
+        # Obtener todas las fichas del paciente ordenadas por fecha
+        fichas = FichaEmergencia.objects.filter(paciente=paciente).select_related(
+            'paramedico', 'anamnesis', 'diagnostico'
+        ).prefetch_related(
+            'signos_vitales', 'solicitudes_medicamentos', 'solicitudes_examenes'
+        ).order_by('-fecha_registro')
+        
+        # Serializar las fichas
+        serializer = FichaEmergenciaSerializer(fichas, many=True)
+        
+        return Response({
+            'paciente': PacienteSerializer(paciente).data,
+            'fichas': serializer.data,
+            'total_atenciones': fichas.count()
+        })
 
 
 class FichaEmergenciaViewSet(viewsets.ModelViewSet):
@@ -181,8 +208,12 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
 class SignosVitalesViewSet(viewsets.ModelViewSet):
     """ViewSet para gestión de signos vitales"""
     queryset = SignosVitales.objects.all()
-    serializer_class = SignosVitalesSerializer
     permission_classes = [IsAuthenticated]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return SignosVitalesCreateSerializer
+        return SignosVitalesSerializer
     
     def get_queryset(self):
         queryset = SignosVitales.objects.all()
@@ -291,3 +322,75 @@ class DiagnosticoViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(ficha_id=ficha_id)
         
         return queryset
+    
+    def create(self, request, *args, **kwargs):
+        """Crear diagnóstico y cerrar la ficha"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Marcar la ficha como atendida automáticamente
+        ficha_id = request.data.get('ficha')
+        if ficha_id:
+            try:
+                ficha = FichaEmergencia.objects.get(id=ficha_id)
+                ficha.estado = 'atendido'
+                ficha.save()
+                print(f"✅ Ficha #{ficha_id} marcada como atendida automáticamente")
+            except FichaEmergencia.DoesNotExist:
+                print(f"⚠️ Ficha #{ficha_id} no encontrada")
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class SolicitudExamenViewSet(viewsets.ModelViewSet):
+    """ViewSet para gestión de solicitudes de exámenes"""
+    queryset = SolicitudExamen.objects.all()
+    serializer_class = SolicitudExamenSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = SolicitudExamen.objects.select_related('ficha', 'medico')
+        
+        ficha_id = self.request.query_params.get('ficha', None)
+        if ficha_id:
+            queryset = queryset.filter(ficha_id=ficha_id)
+        
+        estado = self.request.query_params.get('estado', None)
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        
+        return queryset.order_by('-fecha_solicitud')
+    
+    @action(detail=False, methods=['get'])
+    def pendientes(self, request):
+        """Obtener solicitudes pendientes"""
+        solicitudes = self.get_queryset().filter(estado='pendiente')
+        serializer = self.get_serializer(solicitudes, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def marcar_proceso(self, request, pk=None):
+        """Marcar examen como en proceso"""
+        solicitud = self.get_object()
+        solicitud.estado = 'en_proceso'
+        solicitud.save()
+        serializer = self.get_serializer(solicitud)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def completar(self, request, pk=None):
+        """Completar examen con resultados"""
+        solicitud = self.get_object()
+        resultados = request.data.get('resultados', '')
+        observaciones = request.data.get('observaciones', '')
+        
+        solicitud.estado = 'completado'
+        solicitud.resultados = resultados
+        if observaciones:
+            solicitud.observaciones = observaciones
+        solicitud.save()
+        
+        serializer = self.get_serializer(solicitud)
+        return Response(serializer.data)

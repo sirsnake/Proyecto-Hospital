@@ -197,3 +197,42 @@ class Diagnostico(models.Model):
     
     def __str__(self):
         return f"Diagnóstico {self.diagnostico_cie10} - Ficha #{self.ficha.id}"
+
+
+class SolicitudExamen(models.Model):
+    """Solicitud de exámenes médicos"""
+    ESTADO_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('en_proceso', 'En Proceso'),
+        ('completado', 'Completado'),
+        ('cancelado', 'Cancelado'),
+    ]
+    
+    PRIORIDAD_CHOICES = [
+        ('urgente', 'Urgente'),
+        ('normal', 'Normal'),
+        ('diferido', 'Diferido'),
+    ]
+    
+    ficha = models.ForeignKey(FichaEmergencia, on_delete=models.CASCADE, related_name='solicitudes_examenes')
+    medico = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='examenes_solicitados')
+    
+    tipo_examen = models.CharField(max_length=200, help_text="Tipo de examen solicitado")
+    examenes_especificos = models.TextField(help_text="Lista detallada de exámenes")
+    justificacion = models.TextField(help_text="Justificación clínica")
+    prioridad = models.CharField(max_length=20, choices=PRIORIDAD_CHOICES, default='normal')
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='pendiente')
+    
+    observaciones = models.TextField(blank=True, null=True)
+    resultados = models.TextField(blank=True, null=True)
+    
+    fecha_solicitud = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Solicitud de Examen'
+        verbose_name_plural = 'Solicitudes de Exámenes'
+        ordering = ['-fecha_solicitud']
+    
+    def __str__(self):
+        return f"{self.tipo_examen} - Ficha #{self.ficha.id} ({self.estado})"

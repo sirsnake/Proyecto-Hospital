@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI } from "@/lib/api"
+import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI, solicitudesExamenesAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,15 +13,20 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ModalDiagnostico } from "@/components/modal-diagnostico"
+import { ModalExamenes } from "@/components/modal-examenes"
+import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 
 export default function MedicoDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("casos")
+  const [modalBuscarOpen, setModalBuscarOpen] = useState(false)
   const [fichasActivas, setFichasActivas] = useState<any[]>([])
   const [solicitudesPendientes, setSolicitudesPendientes] = useState<any[]>([])
   const [modalDiagnosticoOpen, setModalDiagnosticoOpen] = useState(false)
+  const [modalExamenesOpen, setModalExamenesOpen] = useState(false)
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null)
+  const [fichaParaExamen, setFichaParaExamen] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -70,17 +75,19 @@ export default function MedicoDashboard() {
         estado: ficha.estado,
         prioridad: ficha.prioridad,
         eta: ficha.eta,
-        signosVitales: ficha.signos_vitales ? {
-          presionSistolica: ficha.signos_vitales.presion_sistolica,
-          presionDiastolica: ficha.signos_vitales.presion_diastolica,
-          frecuenciaCardiaca: ficha.signos_vitales.frecuencia_cardiaca,
-          frecuenciaRespiratoria: ficha.signos_vitales.frecuencia_respiratoria,
-          saturacionO2: ficha.signos_vitales.saturacion_o2,
-          temperatura: ficha.signos_vitales.temperatura,
-          glucosa: ficha.signos_vitales.glucosa,
-          escalaGlasgow: ficha.signos_vitales.escala_glasgow,
-          eva: ficha.signos_vitales.eva
-        } : null,
+        signosVitales: (ficha.signos_vitales || []).map((sv: any) => ({
+          id: sv.id,
+          presionSistolica: sv.presion_sistolica,
+          presionDiastolica: sv.presion_diastolica,
+          frecuenciaCardiaca: sv.frecuencia_cardiaca,
+          frecuenciaRespiratoria: sv.frecuencia_respiratoria,
+          saturacionO2: sv.saturacion_o2,
+          temperatura: sv.temperatura,
+          glucosa: sv.glucosa,
+          escalaGlasgow: sv.escala_glasgow,
+          eva: sv.eva,
+          fechaRegistro: sv.fecha_registro
+        })),
         anamnesis: ficha.anamnesis ? {
           tens: ficha.anamnesis.tens_nombre || `TENS #${ficha.anamnesis.tens}`,
           antecedentesMorbidos: ficha.anamnesis.antecedentes_morbidos,
@@ -168,6 +175,43 @@ export default function MedicoDashboard() {
     setModalDiagnosticoOpen(true)
   }
 
+  const handleAbrirExamenes = (ficha: any) => {
+    setFichaParaExamen(ficha)
+    setModalExamenesOpen(true)
+  }
+
+  const handleConfirmExamenes = async (solicitud: any) => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      const data = {
+        ficha: fichaParaExamen.id,
+        medico: user.id,
+        tipo_examen: solicitud.tipoExamen,
+        examenes_especificos: solicitud.examenesEspecificos,
+        justificacion: solicitud.justificacion,
+        prioridad: solicitud.prioridad
+      }
+      
+      console.log('🧪 Enviando solicitud de exámenes:', data)
+      
+      const response = await solicitudesExamenesAPI.crear(data)
+      console.log('✅ Exámenes solicitados:', response)
+      
+      setSuccess("✅ Exámenes solicitados exitosamente")
+      setFichaParaExamen(null)
+      setModalExamenesOpen(false)
+      
+      setTimeout(() => setSuccess(""), 3000)
+    } catch (err: any) {
+      console.error('❌ Error al solicitar exámenes:', err)
+      setError(err.message || "Error al solicitar exámenes")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleConfirmDiagnostico = async (diagnostico: any) => {
     try {
       setLoading(true)
@@ -177,18 +221,27 @@ export default function MedicoDashboard() {
         ficha: fichaSeleccionada.id,
         medico: user.id,
         diagnostico_cie10: diagnostico.codigoCIE10,
-        descripcion_diagnostico: diagnostico.descripcion,
-        tratamiento: diagnostico.tratamiento,
-        observaciones: diagnostico.observaciones || ""
+        descripcion: diagnostico.diagnostico,
+        indicaciones_medicas: diagnostico.indicaciones,
+        medicamentos_prescritos: diagnostico.medicamentos || ""
       }
       
-      await diagnosticosAPI.crear(data)
-      setSuccess("Diagnóstico guardado exitosamente")
+      console.log('📋 Enviando diagnóstico:', data)
+      
+      const response = await diagnosticosAPI.crear(data)
+      console.log('✅ Diagnóstico guardado:', response)
+      
+      setSuccess("✅ Diagnóstico guardado exitosamente. Paciente dado de alta.")
       setFichaSeleccionada(null)
       setModalDiagnosticoOpen(false)
       await cargarDatos()
-      setTimeout(() => setSuccess(""), 3000)
+      
+      // Cambiar a tab de casos activos después de guardar
+      setActiveTab("casos")
+      
+      setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
+      console.error('❌ Error al guardar diagnóstico:', err)
       setError(err.message || "Error al guardar diagnóstico")
     } finally {
       setLoading(false)
@@ -229,9 +282,21 @@ export default function MedicoDashboard() {
               <p className="text-sm text-slate-400">Médico: {user.nombre_completo || user.first_name + ' ' + user.last_name}</p>
             </div>
           </div>
-          <Button variant="outline" onClick={handleCerrarSesion}>
-            Cerrar Sesión
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setModalBuscarOpen(true)}
+              className="border-blue-500 text-blue-500 hover:bg-blue-500/10"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Buscar Paciente
+            </Button>
+            <Button variant="outline" onClick={handleCerrarSesion}>
+              Cerrar Sesión
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -373,28 +438,61 @@ export default function MedicoDashboard() {
                         <strong>Circunstancias:</strong> {ficha.circunstancias}
                       </p>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                        <div className="p-2 bg-slate-800/50 rounded">
-                          <p className="text-xs text-slate-400">Presión</p>
-                          <p className="text-sm font-semibold text-white">
-                            {ficha.signosVitales.presionSistolica}/{ficha.signosVitales.presionDiastolica}
-                          </p>
+                      {/* Mostrar todas las mediciones de signos vitales */}
+                      {ficha.signosVitales && ficha.signosVitales.length > 0 ? (
+                        <div className="space-y-3 mt-3">
+                          {ficha.signosVitales.map((signos: any, index: number) => (
+                            <div key={signos.id} className="border-t border-slate-700 pt-3">
+                              <p className="text-xs text-slate-400 mb-2">
+                                {index === 0 ? '📋 Signos Vitales - Paramédico' : `📊 Signos Vitales - TENS (Medición ${index})`}
+                                {signos.fechaRegistro && ` • ${new Date(signos.fechaRegistro).toLocaleString('es-CL')}`}
+                              </p>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div className="p-2 bg-slate-800/50 rounded">
+                                  <p className="text-xs text-slate-400">Presión</p>
+                                  <p className="text-sm font-semibold text-white">
+                                    {signos.presionSistolica}/{signos.presionDiastolica}
+                                  </p>
+                                </div>
+                                <div className="p-2 bg-slate-800/50 rounded">
+                                  <p className="text-xs text-slate-400">FC</p>
+                                  <p className="text-sm font-semibold text-white">
+                                    {signos.frecuenciaCardiaca} lpm
+                                  </p>
+                                </div>
+                                <div className="p-2 bg-slate-800/50 rounded">
+                                  <p className="text-xs text-slate-400">SatO₂</p>
+                                  <p className="text-sm font-semibold text-white">{signos.saturacionO2}%</p>
+                                </div>
+                                <div className="p-2 bg-slate-800/50 rounded">
+                                  <p className="text-xs text-slate-400">Temp</p>
+                                  <p className="text-sm font-semibold text-white">{signos.temperatura}°C</p>
+                                </div>
+                                {signos.glucosa && (
+                                  <div className="p-2 bg-slate-800/50 rounded">
+                                    <p className="text-xs text-slate-400">Glucosa</p>
+                                    <p className="text-sm font-semibold text-white">{signos.glucosa} mg/dL</p>
+                                  </div>
+                                )}
+                                {signos.escalaGlasgow && (
+                                  <div className="p-2 bg-slate-800/50 rounded">
+                                    <p className="text-xs text-slate-400">Glasgow</p>
+                                    <p className="text-sm font-semibold text-white">{signos.escalaGlasgow}</p>
+                                  </div>
+                                )}
+                                {signos.eva !== null && signos.eva !== undefined && (
+                                  <div className="p-2 bg-slate-800/50 rounded">
+                                    <p className="text-xs text-slate-400">EVA</p>
+                                    <p className="text-sm font-semibold text-white">{signos.eva}/10</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="p-2 bg-slate-800/50 rounded">
-                          <p className="text-xs text-slate-400">FC</p>
-                          <p className="text-sm font-semibold text-white">
-                            {ficha.signosVitales.frecuenciaCardiaca} lpm
-                          </p>
-                        </div>
-                        <div className="p-2 bg-slate-800/50 rounded">
-                          <p className="text-xs text-slate-400">SatO₂</p>
-                          <p className="text-sm font-semibold text-white">{ficha.signosVitales.saturacionO2}%</p>
-                        </div>
-                        <div className="p-2 bg-slate-800/50 rounded">
-                          <p className="text-xs text-slate-400">Temp</p>
-                          <p className="text-sm font-semibold text-white">{ficha.signosVitales.temperatura}°C</p>
-                        </div>
-                      </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 mt-3">Sin signos vitales registrados</p>
+                      )}
                     </div>
 
                     {/* Anamnesis del TENS */}
@@ -450,7 +548,10 @@ export default function MedicoDashboard() {
                         </svg>
                         Realizar Diagnóstico
                       </Button>
-                      <Button className="bg-purple-600 hover:bg-purple-700 text-white">
+                      <Button 
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        onClick={() => handleAbrirExamenes(ficha)}
+                      >
                         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path
                             strokeLinecap="round"
@@ -663,6 +764,19 @@ export default function MedicoDashboard() {
         onOpenChange={setModalDiagnosticoOpen}
         ficha={fichaSeleccionada}
         onConfirm={handleConfirmDiagnostico}
+      />
+
+      {/* Modal de solicitud de exámenes */}
+      <ModalExamenes
+        open={modalExamenesOpen}
+        onOpenChange={setModalExamenesOpen}
+        ficha={fichaParaExamen}
+        onConfirm={handleConfirmExamenes}
+      />
+
+      <ModalBuscarPaciente 
+        open={modalBuscarOpen} 
+        onOpenChange={setModalBuscarOpen} 
       />
     </div>
   )

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico
+from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
 
 
 @admin.register(Usuario)
@@ -55,3 +55,11 @@ class DiagnosticoAdmin(admin.ModelAdmin):
     list_display = ['ficha', 'diagnostico_cie10', 'medico', 'fecha_diagnostico']
     list_filter = ['fecha_diagnostico']
     search_fields = ['diagnostico_cie10', 'descripcion']
+
+
+@admin.register(SolicitudExamen)
+class SolicitudExamenAdmin(admin.ModelAdmin):
+    list_display = ['tipo_examen', 'ficha', 'medico', 'prioridad', 'estado', 'fecha_solicitud']
+    list_filter = ['estado', 'prioridad', 'tipo_examen', 'fecha_solicitud']
+    search_fields = ['tipo_examen', 'examenes_especificos', 'justificacion']
+    readonly_fields = ['fecha_solicitud', 'fecha_actualizacion']

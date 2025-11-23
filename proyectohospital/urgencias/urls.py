@@ -9,6 +9,7 @@ router.register(r'signos-vitales', views.SignosVitalesViewSet, basename='signos-
 router.register(r'solicitudes-medicamentos', views.SolicitudMedicamentoViewSet, basename='solicitud-medicamento')
 router.register(r'anamnesis', views.AnamnesisViewSet, basename='anamnesis')
 router.register(r'diagnosticos', views.DiagnosticoViewSet, basename='diagnostico')
+router.register(r'solicitudes-examenes', views.SolicitudExamenViewSet, basename='solicitud-examen')
 
 urlpatterns = [
     path('csrf/', views.csrf_token_view, name='csrf-token'),

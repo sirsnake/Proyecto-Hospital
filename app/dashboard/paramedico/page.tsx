@@ -14,12 +14,14 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ModalPacienteNN } from "@/components/modal-paciente-nn"
+import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 
 export default function ParamedicoDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("registro")
   const [modalNNOpen, setModalNNOpen] = useState(false)
+  const [modalBuscarOpen, setModalBuscarOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -249,6 +251,18 @@ export default function ParamedicoDashboard() {
         return
       }
       
+      // Validar escala de Glasgow (debe estar entre 3 y 15)
+      if (signosData.escala_glasgow && (parseInt(signosData.escala_glasgow) < 3 || parseInt(signosData.escala_glasgow) > 15)) {
+        setError("⚠️ La Escala de Glasgow debe estar entre 3 y 15. Por favor corrija el valor.")
+        return
+      }
+      
+      // Validar EVA (debe estar entre 0 y 10)
+      if (signosData.eva && (parseInt(signosData.eva) < 0 || parseInt(signosData.eva) > 10)) {
+        setError("⚠️ La escala EVA debe estar entre 0 y 10. Por favor corrija el valor.")
+        return
+      }
+      
       const fichaCompleta = {
         paciente: (pacienteCreado || pacienteNN).id,
         paramedico: user.id,
@@ -417,9 +431,20 @@ export default function ParamedicoDashboard() {
               </div>
             )}
           </div>
-          <Button
-            variant="outline"
-            onClick={async () => {
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setModalBuscarOpen(true)}
+              className="border-blue-500 text-blue-500 hover:bg-blue-500/10"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Buscar Paciente
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
               try {
                 await authAPI.logout()
               } catch (error) {
@@ -1060,6 +1085,7 @@ export default function ParamedicoDashboard() {
       </main>
 
       <ModalPacienteNN open={modalNNOpen} onOpenChange={setModalNNOpen} onConfirm={handleConfirmNN} />
+      <ModalBuscarPaciente open={modalBuscarOpen} onOpenChange={setModalBuscarOpen} />
     </div>
   )
 }

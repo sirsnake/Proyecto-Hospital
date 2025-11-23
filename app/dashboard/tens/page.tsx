@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI } from "@/lib/api"
+import { authAPI, fichasAPI, signosVitalesAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -12,16 +12,30 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 
 export default function TensDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("ambulancias")
-  const [selectedPaciente, setSelectedPaciente] = useState<string | null>(null)
+  const [modalBuscarOpen, setModalBuscarOpen] = useState(false)
   const [fichasEnRuta, setFichasEnRuta] = useState<any[]>([])
   const [fichasEnHospital, setFichasEnHospital] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const [fichaEditando, setFichaEditando] = useState<number | null>(null)
+  const [nuevosSignos, setNuevosSignos] = useState({
+    presionSistolica: "",
+    presionDiastolica: "",
+    frecuenciaCardiaca: "",
+    frecuenciaRespiratoria: "",
+    saturacionO2: "",
+    temperatura: "",
+    glucosa: "",
+    escalaGlasgow: "",
+    eva: ""
+  })
 
   useEffect(() => {
     const currentUser = getSession()
@@ -50,6 +64,14 @@ export default function TensDashboard() {
       // Cargar fichas en hospital
       const enHospital = await fichasAPI.enHospital()
       console.log('🏥 Fichas en hospital:', enHospital)
+      
+      // Log detallado de signos vitales
+      if (Array.isArray(enHospital) && enHospital.length > 0) {
+        enHospital.forEach((ficha: any) => {
+          console.log(`📋 Ficha ${ficha.id} tiene ${ficha.signos_vitales?.length || 0} mediciones de signos vitales:`, ficha.signos_vitales)
+        })
+      }
+      
       setFichasEnHospital(Array.isArray(enHospital) ? enHospital : [])
       
       console.log(`📊 Total: ${enRuta.length || 0} en ruta, ${enHospital.length || 0} en hospital`)
@@ -59,6 +81,116 @@ export default function TensDashboard() {
       setFichasEnRuta([])
       setFichasEnHospital([])
     } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleMarcarLlegada = async (fichaId: number) => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      await fichasAPI.actualizar(fichaId, { estado: 'en_hospital' })
+      setSuccess("✅ Paciente marcado como llegado al hospital")
+      
+      // Recargar fichas para actualizar la lista
+      await cargarFichas()
+      
+      // Cambiar a tab de hospital
+      setActiveTab("hospital")
+      
+      setTimeout(() => setSuccess(""), 3000)
+    } catch (err: any) {
+      console.error('Error al marcar llegada:', err)
+      setError(err.message || "Error al marcar llegada del paciente")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGuardarSignosVitales = async (fichaId: number) => {
+    console.log('🔵 handleGuardarSignosVitales llamado con fichaId:', fichaId)
+    console.log('🔵 Estado actual nuevosSignos:', nuevosSignos)
+    try {
+      console.log('🔵 Iniciando try block...')
+      setLoading(true)
+      setError("")
+      
+      // Validar que al menos un campo esté completo
+      const algunCampoCompleto = Object.values(nuevosSignos).some(val => val !== "")
+      console.log('🔵 Campo completo?', algunCampoCompleto)
+      if (!algunCampoCompleto) {
+        console.log('❌ Validación falló: no hay campos completos')
+        setError("Debe completar al menos un signo vital")
+        setLoading(false)
+        return
+      }
+      
+      // Validar escala de Glasgow (debe estar entre 3 y 15)
+      console.log('🔵 Validando Glasgow:', nuevosSignos.escalaGlasgow)
+      if (nuevosSignos.escalaGlasgow && (parseInt(nuevosSignos.escalaGlasgow) < 3 || parseInt(nuevosSignos.escalaGlasgow) > 15)) {
+        console.log('❌ Validación falló: Glasgow fuera de rango')
+        setError("La Escala de Glasgow debe estar entre 3 y 15")
+        setLoading(false)
+        return
+      }
+      
+      // Validar EVA (debe estar entre 0 y 10)
+      console.log('🔵 Validando EVA:', nuevosSignos.eva)
+      if (nuevosSignos.eva && (parseInt(nuevosSignos.eva) < 0 || parseInt(nuevosSignos.eva) > 10)) {
+        console.log('❌ Validación falló: EVA fuera de rango')
+        setError("La escala EVA debe estar entre 0 y 10")
+        setLoading(false)
+        return
+      }
+      
+      console.log('✅ Validaciones pasadas, preparando datos...')
+      
+      const data = {
+        ficha: fichaId,
+        presion_sistolica: nuevosSignos.presionSistolica || null,
+        presion_diastolica: nuevosSignos.presionDiastolica || null,
+        frecuencia_cardiaca: nuevosSignos.frecuenciaCardiaca || null,
+        frecuencia_respiratoria: nuevosSignos.frecuenciaRespiratoria || null,
+        saturacion_o2: nuevosSignos.saturacionO2 || null,
+        temperatura: nuevosSignos.temperatura || null,
+        glucosa: nuevosSignos.glucosa || null,
+        escala_glasgow: nuevosSignos.escalaGlasgow || null,
+        eva: nuevosSignos.eva || null
+      }
+      
+      console.log('📊 Guardando nuevos signos vitales:', data)
+      
+      const resultado = await signosVitalesAPI.crear(data)
+      console.log('✅ Respuesta del servidor:', resultado)
+      setSuccess("✅ Signos vitales actualizados exitosamente")
+      
+      // Limpiar formulario
+      setNuevosSignos({
+        presionSistolica: "",
+        presionDiastolica: "",
+        frecuenciaCardiaca: "",
+        frecuenciaRespiratoria: "",
+        saturacionO2: "",
+        temperatura: "",
+        glucosa: "",
+        escalaGlasgow: "",
+        eva: ""
+      })
+      setFichaEditando(null)
+      
+      // Recargar fichas
+      console.log('🔄 Recargando fichas después de guardar signos...')
+      await cargarFichas()
+      console.log('✅ Fichas recargadas')
+      
+      setTimeout(() => setSuccess(""), 3000)
+    } catch (err: any) {
+      console.error('❌ Error al guardar signos vitales:', err)
+      console.error('❌ Stack:', err.stack)
+      setError(err.message || "Error al guardar signos vitales")
+    } finally {
+      console.log('🔵 Finally block - setLoading(false)')
       setLoading(false)
     }
   }
@@ -153,25 +285,50 @@ export default function TensDashboard() {
               <p className="text-sm text-slate-400">TENS: {user.nombre_completo || user.first_name + ' ' + user.last_name}</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                await authAPI.logout()
-              } catch (error) {
-                console.error('Error al cerrar sesión:', error)
-              } finally {
-                localStorage.removeItem("medical_system_user")
-                router.push("/")
-              }
-            }}
-          >
-            Cerrar Sesión
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setModalBuscarOpen(true)}
+              className="border-blue-500 text-blue-500 hover:bg-blue-500/10"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Buscar Paciente
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await authAPI.logout()
+                } catch (error) {
+                  console.error('Error al cerrar sesión:', error)
+                } finally {
+                  localStorage.removeItem("medical_system_user")
+                  router.push("/")
+                }
+              }}
+            >
+              Cerrar Sesión
+            </Button>
+          </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-6">
+        {/* Mensajes de éxito y error */}
+        {success && (
+          <Alert className="mb-6 bg-emerald-500/10 border-emerald-500/30 text-emerald-500">
+            <AlertDescription>{success}</AlertDescription>
+          </Alert>
+        )}
+        
+        {error && (
+          <Alert className="mb-6 bg-red-500/10 border-red-500/30 text-red-500">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
             <TabsTrigger value="ambulancias">
@@ -313,8 +470,21 @@ export default function TensDashboard() {
 
                           <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                             <p className="text-sm text-blue-400">
-                              📋 Ambulancia en tránsito - Los datos se actualizan automáticamente cada 30 segundos
+                              📋 Ambulancia en tránsito - Los datos se actualizan automáticamente cada 60 segundos
                             </p>
+                          </div>
+
+                          <div className="flex gap-3 mt-4">
+                            <Button 
+                              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => handleMarcarLlegada(ficha.id)}
+                              disabled={loading}
+                            >
+                              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              ✅ Paciente Ya Llegó
+                            </Button>
                           </div>
                         </CardContent>
                       </Card>
@@ -358,38 +528,64 @@ export default function TensDashboard() {
                         </div>
                         <p className="text-sm text-slate-300 mb-3">{ficha.motivo_consulta}</p>
 
-                        {/* Signos vitales iniciales */}
-                        {signosFormateados ? (
-                          <div className="mb-4 p-3 bg-slate-800/30 rounded-lg">
-                            <p className="text-xs font-semibold text-slate-400 mb-2">
-                              Signos Vitales (Paramédico):
-                            </p>
-                            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
-                              <div>
-                                <p className="text-slate-500">PA</p>
-                                <p className="text-white font-semibold">{signosFormateados.presion}</p>
+                        {/* Mostrar TODOS los signos vitales */}
+                        {ficha.signos_vitales && ficha.signos_vitales.length > 0 ? (
+                          <div className="mb-4 space-y-3">
+                            {ficha.signos_vitales.map((signos: any, index: number) => (
+                              <div key={signos.id} className="p-3 bg-slate-800/30 rounded-lg">
+                                <p className="text-xs font-semibold text-slate-400 mb-2">
+                                  {index === 0 ? '📋 Signos Vitales - Paramédico' : `📊 Signos Vitales - TENS (Medición ${index})`}
+                                  <span className="ml-2 text-slate-500">
+                                    {new Date(signos.fecha_registro).toLocaleString('es-CL', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </p>
+                                <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                                  <div>
+                                    <p className="text-slate-500">PA</p>
+                                    <p className="text-white font-semibold">{signos.presion_sistolica}/{signos.presion_diastolica}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500">FC</p>
+                                    <p className="text-white font-semibold">{signos.frecuencia_cardiaca}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500">FR</p>
+                                    <p className="text-white font-semibold">{signos.frecuencia_respiratoria}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500">SatO₂</p>
+                                    <p className="text-white font-semibold">{signos.saturacion_o2}%</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500">Temp</p>
+                                    <p className="text-white font-semibold">{signos.temperatura}°C</p>
+                                  </div>
+                                  {signos.escala_glasgow && (
+                                    <div>
+                                      <p className="text-slate-500">Glasgow</p>
+                                      <p className="text-white font-semibold">{signos.escala_glasgow}</p>
+                                    </div>
+                                  )}
+                                  {signos.eva !== null && signos.eva !== undefined && (
+                                    <div>
+                                      <p className="text-slate-500">EVA</p>
+                                      <p className="text-white font-semibold">{signos.eva}/10</p>
+                                    </div>
+                                  )}
+                                  {signos.glucosa && (
+                                    <div>
+                                      <p className="text-slate-500">Glucosa</p>
+                                      <p className="text-white font-semibold">{signos.glucosa}</p>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                              <div>
-                                <p className="text-slate-500">FC</p>
-                                <p className="text-white font-semibold">{signosFormateados.fc}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500">FR</p>
-                                <p className="text-white font-semibold">{signosFormateados.fr}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500">SatO₂</p>
-                              <p className="text-white font-semibold">{signosFormateados.sato2}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500">Temp</p>
-                                <p className="text-white font-semibold">{signosFormateados.temperatura}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500">EVA</p>
-                                <p className="text-white font-semibold">{signosFormateados.eva}</p>
-                              </div>
-                            </div>
+                            ))}
                           </div>
                         ) : (
                           <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
@@ -397,171 +593,184 @@ export default function TensDashboard() {
                           </div>
                         )}
 
-                        <Button
-                          size="sm"
-                          className="w-full bg-blue-600 hover:bg-blue-700"
-                          onClick={() => setSelectedPaciente(ficha.id)}
-                        >
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                            />
-                          </svg>
-                          Verificar Signos Vitales
-                        </Button>
+                        {fichaEditando === ficha.id ? (
+                          <div className="mt-4 p-4 border border-blue-500/30 bg-blue-500/5 rounded-lg space-y-4">
+                            <h4 className="font-semibold text-white mb-3">📊 Nuevos Signos Vitales (TENS)</h4>
+                            
+                            {error && (
+                              <Alert className="bg-red-500/10 border-red-500 text-red-500">
+                                <AlertDescription className="font-semibold">
+                                  ⚠️ {error}
+                                </AlertDescription>
+                              </Alert>
+                            )}
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                              <div>
+                                <Label className="text-slate-300 text-xs">Presión Sistólica (mmHg)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  placeholder="120"
+                                  value={nuevosSignos.presionSistolica}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, presionSistolica: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">Presión Diastólica (mmHg)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  placeholder="80"
+                                  value={nuevosSignos.presionDiastolica}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, presionDiastolica: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">FC (lpm)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  placeholder="75"
+                                  value={nuevosSignos.frecuenciaCardiaca}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, frecuenciaCardiaca: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">FR (rpm)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  placeholder="16"
+                                  value={nuevosSignos.frecuenciaRespiratoria}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, frecuenciaRespiratoria: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">SatO₂ (%)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  placeholder="98"
+                                  value={nuevosSignos.saturacionO2}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, saturacionO2: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">Temperatura (°C)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  placeholder="36.5"
+                                  value={nuevosSignos.temperatura}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, temperatura: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">Glucosa (mg/dL)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  placeholder="90"
+                                  value={nuevosSignos.glucosa}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, glucosa: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">Escala Glasgow (3-15)</Label>
+                                <Input
+                                  type="number"
+                                  min="3"
+                                  max="15"
+                                  placeholder="15"
+                                  value={nuevosSignos.escalaGlasgow}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, escalaGlasgow: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-slate-300 text-xs">EVA (0-10)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="10"
+                                  placeholder="3"
+                                  value={nuevosSignos.eva}
+                                  onChange={(e) => setNuevosSignos({...nuevosSignos, eva: e.target.value})}
+                                  className="bg-slate-800 border-slate-700 text-white"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              <Button 
+                                type="button"
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                                onClick={() => handleGuardarSignosVitales(ficha.id)}
+                                disabled={loading}
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Guardar Signos Vitales
+                              </Button>
+                              <Button 
+                                type="button"
+                                variant="outline" 
+                                onClick={() => {
+                                  setFichaEditando(null)
+                                  setNuevosSignos({
+                                    presionSistolica: "", presionDiastolica: "", frecuenciaCardiaca: "",
+                                    frecuenciaRespiratoria: "", saturacionO2: "", temperatura: "",
+                                    glucosa: "", escalaGlasgow: "", eva: ""
+                                  })
+                                }}
+                                className="border-slate-700"
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="w-full bg-blue-600 hover:bg-blue-700"
+                            onClick={() => setFichaEditando(ficha.id)}
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                            📊 Medir Signos Vitales
+                          </Button>
+                        )}
                       </div>
                     )
                   })}
                 </div>
               </CardContent>
             </Card>
-
-            {selectedPaciente && (
-              <Card className="border-blue-500/30 bg-slate-900/50">
-                <CardHeader>
-                  <CardTitle className="text-white">Verificación de Signos Vitales en Hospital</CardTitle>
-                  <CardDescription className="text-slate-400">
-                    Registre los signos vitales actualizados del paciente al llegar al hospital
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="presion-hosp" className="text-slate-300">
-                        Presión Arterial (mmHg)
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="presion-sistolica-hosp"
-                          placeholder="120"
-                          className="bg-slate-800 border-slate-700 text-white"
-                        />
-                        <span className="text-slate-400 flex items-center">/</span>
-                        <Input
-                          id="presion-diastolica-hosp"
-                          placeholder="80"
-                          className="bg-slate-800 border-slate-700 text-white"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="fc-hosp" className="text-slate-300">
-                        Frecuencia Cardíaca (lpm)
-                      </Label>
-                      <Input
-                        id="fc-hosp"
-                        type="number"
-                        placeholder="75"
-                        className="bg-slate-800 border-slate-700 text-white"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="fr-hosp" className="text-slate-300">
-                        Frecuencia Respiratoria (rpm)
-                      </Label>
-                      <Input
-                        id="fr-hosp"
-                        type="number"
-                        placeholder="16"
-                        className="bg-slate-800 border-slate-700 text-white"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sato2-hosp" className="text-slate-300">
-                        Saturación O₂ (%)
-                      </Label>
-                      <Input
-                        id="sato2-hosp"
-                        type="number"
-                        placeholder="98"
-                        className="bg-slate-800 border-slate-700 text-white"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="temperatura-hosp" className="text-slate-300">
-                        Temperatura (°C)
-                      </Label>
-                      <Input
-                        id="temperatura-hosp"
-                        type="number"
-                        step="0.1"
-                        placeholder="36.5"
-                        className="bg-slate-800 border-slate-700 text-white"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="glasgow-hosp" className="text-slate-300">
-                        Escala de Glasgow
-                      </Label>
-                      <Select>
-                        <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="15">15 - Consciente</SelectItem>
-                          <SelectItem value="14">14 - Confuso</SelectItem>
-                          <SelectItem value="13">13 - Verbal inapropiado</SelectItem>
-                          <SelectItem value="8">8 - Semiconsciente</SelectItem>
-                          <SelectItem value="3">3 - Inconsciente</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="eva-hosp" className="text-slate-300">
-                      EVA - Escala Visual Análoga del Dolor
-                    </Label>
-                    <Select>
-                      <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                        <SelectValue placeholder="Seleccionar nivel de dolor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">0 - Sin dolor</SelectItem>
-                        <SelectItem value="1">1/10 - Dolor leve</SelectItem>
-                        <SelectItem value="2">2/10 - Dolor leve</SelectItem>
-                        <SelectItem value="3">3/10 - Dolor leve</SelectItem>
-                        <SelectItem value="4">4/10 - Dolor moderado</SelectItem>
-                        <SelectItem value="5">5/10 - Dolor moderado</SelectItem>
-                        <SelectItem value="6">6/10 - Dolor moderado</SelectItem>
-                        <SelectItem value="7">7/10 - Dolor severo</SelectItem>
-                        <SelectItem value="8">8/10 - Dolor severo</SelectItem>
-                        <SelectItem value="9">9/10 - Dolor severo</SelectItem>
-                        <SelectItem value="10">10/10 - Dolor insoportable</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-slate-400">0-3: Leve • 4-6: Moderado • 7-10: Severo</p>
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      Guardar Verificación
-                    </Button>
-                    <Button
-                      className="bg-red-600 hover:bg-red-700 text-white"
-                      onClick={() => setSelectedPaciente(null)}
-                    >
-                      Cancelar
-                    </Button>
-                  </div>
-
-                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                    <p className="text-sm text-blue-400">
-                      💡 Esta verificación se registra automáticamente en la ficha del paciente
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
           </TabsContent>
         </Tabs>
       </main>
+
+      <ModalBuscarPaciente 
+        open={modalBuscarOpen} 
+        onOpenChange={setModalBuscarOpen} 
+      />
     </div>
   )
 }

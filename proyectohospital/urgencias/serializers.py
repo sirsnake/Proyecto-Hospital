@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico
+from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -75,11 +75,11 @@ class SignosVitalesSerializer(serializers.ModelSerializer):
 
 
 class SignosVitalesCreateSerializer(serializers.ModelSerializer):
-    """Serializer para crear signos vitales (sin requerir ficha)"""
+    """Serializer para crear signos vitales"""
     
     class Meta:
         model = SignosVitales
-        exclude = ['ficha']  # Excluir ficha porque se asignará automáticamente
+        fields = '__all__'
         read_only_fields = ['id', 'timestamp']
 
 
@@ -112,6 +112,16 @@ class DiagnosticoSerializer(serializers.ModelSerializer):
         model = Diagnostico
         fields = '__all__'
         read_only_fields = ['id', 'fecha_diagnostico']
+
+
+class SolicitudExamenSerializer(serializers.ModelSerializer):
+    """Serializer para solicitudes de exámenes"""
+    medico_nombre = serializers.CharField(source='medico.get_full_name', read_only=True)
+    
+    class Meta:
+        model = SolicitudExamen
+        fields = '__all__'
+        read_only_fields = ['id', 'fecha_solicitud', 'fecha_actualizacion']
 
 
 class FichaEmergenciaSerializer(serializers.ModelSerializer):
