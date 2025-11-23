@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Ficha de Emergencia</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 2cm;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 11pt;
+            line-height: 1.4;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            color: #2563eb;
+            font-size: 20pt;
+            margin-bottom: 5px;
+        }
+        .header p {
+            color: #666;
+            font-size: 10pt;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .section-title {
+            background-color: #2563eb;
+            color: white;
+            padding: 8px 12px;
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .data-item {
+            padding: 8px;
+            border: 1px solid #e5e7eb;
+            background-color: #f9fafb;
+        }
+        .data-item label {
+            font-weight: bold;
+            color: #374151;
+            font-size: 9pt;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .data-item .value {
+            color: #111827;
+            font-size: 11pt;
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 9pt;
+            font-weight: bold;
+        }
+        .badge-alta { background-color: #fee2e2; color: #991b1b; }
+        .badge-media { background-color: #fef3c7; color: #92400e; }
+        .badge-baja { background-color: #d1fae5; color: #065f46; }
+        .signos-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .signos-table th {
+            background-color: #f3f4f6;
+            padding: 8px;
+            text-align: left;
+            font-size: 9pt;
+            border: 1px solid #e5e7eb;
+        }
+        .signos-table td {
+            padding: 6px 8px;
+            border: 1px solid #e5e7eb;
+            font-size: 10pt;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #e5e7eb;
+            text-align: center;
+            font-size: 9pt;
+            color: #6b7280;
+        }
+        .diagnostico-box {
+            border: 2px solid #2563eb;
+            padding: 15px;
+            margin-top: 10px;
+            background-color: #eff6ff;
+        }
+        .diagnostico-box h3 {
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏥 FICHA DE EMERGENCIA</h1>
+        <p>Sistema de Gestión de Urgencias - Hospital General</p>
+        <p>Fecha de impresión: {{ fecha_actual }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">INFORMACIÓN DE LA FICHA</div>
+        <div class="data-grid">
+            <div class="data-item">
+                <label>N° Ficha:</label>
+                <div class="value">{{ ficha.id }}</div>
+            </div>
+            <div class="data-item">
+                <label>Fecha de Ingreso:</label>
+                <div class="value">{{ ficha.fecha_ingreso|date:"d/m/Y H:i" }}</div>
+            </div>
+            <div class="data-item">
+                <label>Prioridad:</label>
+                <div class="value">
+                    <span class="badge badge-{{ ficha.prioridad|lower }}">
+                        {{ ficha.get_prioridad_display }}
+                    </span>
+                </div>
+            </div>
+            <div class="data-item">
+                <label>Estado Actual:</label>
+                <div class="value"><strong>{{ ficha.get_estado_display }}</strong></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">DATOS DEL PACIENTE</div>
+        <div class="data-grid">
+            <div class="data-item">
+                <label>Nombre Completo:</label>
+                <div class="value">{{ paciente.nombre }}</div>
+            </div>
+            <div class="data-item">
+                <label>RUT:</label>
+                <div class="value">{{ paciente.rut|default:"Sin RUT (NN)" }}</div>
+            </div>
+            <div class="data-item">
+                <label>Edad:</label>
+                <div class="value">{{ paciente.edad }} años</div>
+            </div>
+            <div class="data-item">
+                <label>Sexo:</label>
+                <div class="value">{{ paciente.get_sexo_display }}</div>
+            </div>
+            <div class="data-item">
+                <label>Teléfono:</label>
+                <div class="value">{{ paciente.telefono|default:"No registrado" }}</div>
+            </div>
+            <div class="data-item">
+                <label>Previsión:</label>
+                <div class="value">{{ paciente.prevision|default:"No especificada" }}</div>
+            </div>
+            <div class="data-item full-width">
+                <label>Dirección:</label>
+                <div class="value">{{ paciente.direccion|default:"No registrada" }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">MOTIVO DE CONSULTA</div>
+        <div class="data-item full-width">
+            <div class="value">{{ ficha.motivo_consulta }}</div>
+        </div>
+    </div>
+
+    {% if ficha.anamnesis %}
+    <div class="section">
+        <div class="section-title">ANAMNESIS</div>
+        <div class="data-item full-width">
+            <div class="value">{{ ficha.anamnesis }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if signos_vitales %}
+    <div class="section">
+        <div class="section-title">SIGNOS VITALES</div>
+        <table class="signos-table">
+            <thead>
+                <tr>
+                    <th>Fecha/Hora</th>
+                    <th>PA</th>
+                    <th>FC</th>
+                    <th>FR</th>
+                    <th>Temp</th>
+                    <th>SpO2</th>
+                    <th>Glicemia</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for signo in signos_vitales %}
+                <tr>
+                    <td>{{ signo.timestamp|date:"d/m H:i" }}</td>
+                    <td>{{ signo.presion_sistolica }}/{{ signo.presion_diastolica }}</td>
+                    <td>{{ signo.frecuencia_cardiaca }}</td>
+                    <td>{{ signo.frecuencia_respiratoria }}</td>
+                    <td>{{ signo.temperatura }}°C</td>
+                    <td>{{ signo.saturacion_oxigeno }}%</td>
+                    <td>{{ signo.glicemia|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if diagnostico %}
+    <div class="section">
+        <div class="section-title">DIAGNÓSTICO MÉDICO</div>
+        <div class="diagnostico-box">
+            <h3>Diagnóstico: {{ diagnostico.diagnostico }}</h3>
+            <div class="data-grid" style="margin-top: 15px;">
+                <div class="data-item">
+                    <label>Médico:</label>
+                    <div class="value">{{ diagnostico.medico.nombre }}</div>
+                </div>
+                <div class="data-item">
+                    <label>Fecha:</label>
+                    <div class="value">{{ diagnostico.fecha|date:"d/m/Y H:i" }}</div>
+                </div>
+                {% if diagnostico.tratamiento %}
+                <div class="data-item full-width">
+                    <label>Tratamiento:</label>
+                    <div class="value">{{ diagnostico.tratamiento }}</div>
+                </div>
+                {% endif %}
+                {% if diagnostico.indicaciones %}
+                <div class="data-item full-width">
+                    <label>Indicaciones:</label>
+                    <div class="value">{{ diagnostico.indicaciones }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p><strong>Hospital General - Sistema de Urgencias</strong></p>
+        <p>Este documento es confidencial y solo debe ser usado para fines médicos</p>
+        <p>Generado el {{ fecha_actual }}</p>
+    </div>
+</body>
+</html>

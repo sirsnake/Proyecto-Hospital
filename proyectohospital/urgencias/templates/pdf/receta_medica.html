@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Receta Médica</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 2cm;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #333;
+        }
+        .header {
+            border: 3px solid #10b981;
+            padding: 20px;
+            margin-bottom: 30px;
+            background-color: #f0fdf4;
+        }
+        .header h1 {
+            color: #10b981;
+            font-size: 24pt;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .header .hospital-info {
+            text-align: center;
+            color: #666;
+            font-size: 10pt;
+            margin-bottom: 15px;
+        }
+        .medico-info {
+            background-color: #fff;
+            padding: 15px;
+            border-left: 4px solid #10b981;
+            margin-bottom: 20px;
+        }
+        .medico-info p {
+            margin: 5px 0;
+            font-size: 10pt;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        .section-title {
+            background-color: #10b981;
+            color: white;
+            padding: 10px 15px;
+            font-size: 13pt;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .patient-box {
+            border: 2px solid #d1d5db;
+            padding: 15px;
+            background-color: #f9fafb;
+            margin-bottom: 20px;
+        }
+        .patient-box p {
+            margin: 5px 0;
+        }
+        .patient-box strong {
+            color: #374151;
+        }
+        .prescription-box {
+            border: 2px solid #10b981;
+            padding: 20px;
+            min-height: 200px;
+            background-color: white;
+            margin-bottom: 20px;
+        }
+        .prescription-box h3 {
+            color: #10b981;
+            margin-bottom: 15px;
+            font-size: 14pt;
+        }
+        .prescription-text {
+            white-space: pre-wrap;
+            line-height: 1.8;
+            font-size: 12pt;
+        }
+        .indicaciones-box {
+            background-color: #fef3c7;
+            border: 2px solid #f59e0b;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .indicaciones-box h3 {
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+        .signature-section {
+            margin-top: 60px;
+            text-align: center;
+        }
+        .signature-line {
+            border-top: 2px solid #333;
+            width: 300px;
+            margin: 40px auto 10px;
+        }
+        .footer {
+            position: fixed;
+            bottom: 1cm;
+            left: 2cm;
+            right: 2cm;
+            text-align: center;
+            font-size: 9pt;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 10px;
+        }
+        .rx-symbol {
+            font-size: 36pt;
+            color: #10b981;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>℞ RECETA MÉDICA</h1>
+        <div class="hospital-info">
+            <p><strong>Hospital General - Servicio de Urgencias</strong></p>
+            <p>Dirección: Av. Principal 1234, Santiago, Chile</p>
+            <p>Teléfono: +56 2 2345 6789</p>
+        </div>
+        <div class="medico-info">
+            <p><strong>Dr(a).: {{ medico.nombre }}</strong></p>
+            <p><strong>RUT:</strong> {{ medico.rut }}</p>
+            <p><strong>Especialidad:</strong> Medicina de Urgencia</p>
+            <p><strong>Fecha:</strong> {{ diagnostico.fecha|date:"d/m/Y" }}</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">DATOS DEL PACIENTE</div>
+        <div class="patient-box">
+            <p><strong>Nombre:</strong> {{ paciente.nombre }}</p>
+            <p><strong>RUT:</strong> {{ paciente.rut|default:"Sin RUT registrado" }}</p>
+            <p><strong>Edad:</strong> {{ paciente.edad }} años</p>
+            <p><strong>Previsión:</strong> {{ paciente.prevision|default:"No especificada" }}</p>
+            <p><strong>N° Ficha:</strong> {{ ficha.id }}</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">DIAGNÓSTICO</div>
+        <div class="patient-box">
+            <p style="font-size: 12pt;"><strong>{{ diagnostico.diagnostico }}</strong></p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="prescription-box">
+            <div class="rx-symbol">℞</div>
+            <h3>TRATAMIENTO PRESCRITO:</h3>
+            <div class="prescription-text">{{ diagnostico.tratamiento|default:"No se especificó tratamiento farmacológico" }}</div>
+        </div>
+    </div>
+
+    {% if diagnostico.indicaciones %}
+    <div class="section">
+        <div class="indicaciones-box">
+            <h3>⚠️ INDICACIONES MÉDICAS:</h3>
+            <div style="white-space: pre-wrap; line-height: 1.6;">{{ diagnostico.indicaciones }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="signature-section">
+        <div class="signature-line"></div>
+        <p><strong>{{ medico.nombre }}</strong></p>
+        <p>RUT: {{ medico.rut }}</p>
+        <p>Médico Cirujano</p>
+    </div>
+
+    <div class="footer">
+        <p><strong>Receta válida por 30 días desde la fecha de emisión</strong></p>
+        <p>Este documento es confidencial y solo debe ser usado para fines médicos</p>
+        <p>Generado el {{ fecha_actual }}</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Orden de Exámenes</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 2cm;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #333;
+        }
+        .header {
+            border: 3px solid #8b5cf6;
+            padding: 20px;
+            margin-bottom: 30px;
+            background-color: #faf5ff;
+        }
+        .header h1 {
+            color: #8b5cf6;
+            font-size: 24pt;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .header .hospital-info {
+            text-align: center;
+            color: #666;
+            font-size: 10pt;
+            margin-bottom: 15px;
+        }
+        .medico-info {
+            background-color: #fff;
+            padding: 15px;
+            border-left: 4px solid #8b5cf6;
+            margin-bottom: 20px;
+        }
+        .medico-info p {
+            margin: 5px 0;
+            font-size: 10pt;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        .section-title {
+            background-color: #8b5cf6;
+            color: white;
+            padding: 10px 15px;
+            font-size: 13pt;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .patient-box {
+            border: 2px solid #d1d5db;
+            padding: 15px;
+            background-color: #f9fafb;
+            margin-bottom: 20px;
+        }
+        .patient-box p {
+            margin: 5px 0;
+        }
+        .examenes-box {
+            border: 2px solid #8b5cf6;
+            padding: 20px;
+            min-height: 250px;
+            background-color: white;
+            margin-bottom: 20px;
+        }
+        .examenes-box h3 {
+            color: #8b5cf6;
+            margin-bottom: 15px;
+            font-size: 14pt;
+        }
+        .examen-item {
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #faf5ff;
+            border-left: 4px solid #8b5cf6;
+        }
+        .examen-item h4 {
+            color: #6d28d9;
+            margin-bottom: 5px;
+        }
+        .urgente {
+            background-color: #fee2e2;
+            border-left-color: #dc2626;
+        }
+        .urgente h4 {
+            color: #991b1b;
+        }
+        .urgente::before {
+            content: "⚠️ URGENTE - ";
+            font-weight: bold;
+            color: #991b1b;
+        }
+        .indicaciones-clinicas {
+            background-color: #fef3c7;
+            padding: 15px;
+            margin: 20px 0;
+            border: 2px solid #f59e0b;
+        }
+        .indicaciones-clinicas h4 {
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+        .signature-section {
+            margin-top: 60px;
+            text-align: center;
+        }
+        .signature-line {
+            border-top: 2px solid #333;
+            width: 300px;
+            margin: 40px auto 10px;
+        }
+        .footer {
+            position: fixed;
+            bottom: 1cm;
+            left: 2cm;
+            right: 2cm;
+            text-align: center;
+            font-size: 9pt;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔬 ORDEN DE EXÁMENES</h1>
+        <div class="hospital-info">
+            <p><strong>Hospital General - Servicio de Urgencias</strong></p>
+            <p>Dirección: Av. Principal 1234, Santiago, Chile</p>
+            <p>Teléfono: +56 2 2345 6789</p>
+        </div>
+        <div class="medico-info">
+            <p><strong>Dr(a).: {{ medico.nombre }}</strong></p>
+            <p><strong>RUT:</strong> {{ medico.rut }}</p>
+            <p><strong>Fecha de Emisión:</strong> {{ fecha_actual }}</p>
+            <p><strong>N° Orden:</strong> ORD-{{ ficha.id }}-{{ fecha_actual|date:"YmdHis" }}</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">DATOS DEL PACIENTE</div>
+        <div class="patient-box">
+            <p><strong>Nombre:</strong> {{ paciente.nombre }}</p>
+            <p><strong>RUT:</strong> {{ paciente.rut|default:"Sin RUT registrado" }}</p>
+            <p><strong>Edad:</strong> {{ paciente.edad }} años</p>
+            <p><strong>Sexo:</strong> {{ paciente.get_sexo_display }}</p>
+            <p><strong>Previsión:</strong> {{ paciente.prevision|default:"No especificada" }}</p>
+            <p><strong>N° Ficha:</strong> {{ ficha.id }}</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">DIAGNÓSTICO PRESUNTIVO</div>
+        <div class="patient-box">
+            <p style="font-size: 12pt;"><strong>{{ diagnostico.diagnostico }}</strong></p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="examenes-box">
+            <h3>EXÁMENES SOLICITADOS:</h3>
+            
+            {% if examenes_list %}
+                {% for examen in examenes_list %}
+                <div class="examen-item {% if examen.urgente %}urgente{% endif %}">
+                    <h4>{{ examen.nombre }}</h4>
+                    {% if examen.indicaciones %}
+                    <p style="margin-top: 5px; font-size: 10pt; color: #666;">
+                        <em>{{ examen.indicaciones }}</em>
+                    </p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="margin-top: 20px; font-size: 12pt; white-space: pre-wrap;">{{ examenes_texto|default:"No se especificaron exámenes" }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if diagnostico.indicaciones %}
+    <div class="section">
+        <div class="indicaciones-clinicas">
+            <h4>📋 INDICACIONES CLÍNICAS:</h4>
+            <div style="white-space: pre-wrap; line-height: 1.6; margin-top: 10px;">{{ diagnostico.indicaciones }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="signature-section">
+        <div class="signature-line"></div>
+        <p><strong>{{ medico.nombre }}</strong></p>
+        <p>RUT: {{ medico.rut }}</p>
+        <p>Médico Cirujano</p>
+    </div>
+
+    <div class="footer">
+        <p><strong>Orden válida por 30 días desde la fecha de emisión</strong></p>
+        <p>El paciente debe presentarse en ayunas de 8 horas para exámenes de laboratorio</p>
+        <p>Generado el {{ fecha_actual }}</p>
+    </div>
+</body>
+</html>

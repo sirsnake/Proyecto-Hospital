@@ -6,6 +6,10 @@ from django.contrib.auth import login, logout
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.db.models import Q
+from django.http import FileResponse, HttpResponse
+from django.template.loader import render_to_string
+from weasyprint import HTML
+import io
 from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
 from .serializers import (
     UsuarioSerializer, LoginSerializer, PacienteSerializer, 
@@ -394,3 +398,157 @@ class SolicitudExamenViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(solicitud)
         return Response(serializer.data)
+
+
+class DocumentosPDFViewSet(viewsets.ViewSet):
+    """ViewSet para generación de documentos PDF"""
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['get'], url_path='ficha/(?P<ficha_id>[^/.]+)')
+    def ficha_pdf(self, request, ficha_id=None):
+        """Generar PDF de ficha de emergencia completa"""
+        try:
+            ficha = FichaEmergencia.objects.select_related('paciente').get(id=ficha_id)
+            signos_vitales = SignosVitales.objects.filter(ficha=ficha).order_by('timestamp')
+            
+            # Intentar obtener el diagnóstico si existe
+            try:
+                diagnostico = Diagnostico.objects.select_related('medico').get(ficha=ficha)
+            except Diagnostico.DoesNotExist:
+                diagnostico = None
+            
+            context = {
+                'ficha': ficha,
+                'paciente': ficha.paciente,
+                'signos_vitales': signos_vitales,
+                'diagnostico': diagnostico,
+                'fecha_actual': timezone.now().strftime('%d/%m/%Y %H:%M'),
+            }
+            
+            html_string = render_to_string('pdf/ficha_emergencia.html', context)
+            html = HTML(string=html_string)
+            pdf_file = html.write_pdf()
+            
+            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="ficha_{ficha_id}.pdf"'
+            return response
+            
+        except FichaEmergencia.DoesNotExist:
+            return Response({'error': 'Ficha no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'], url_path='receta/(?P<ficha_id>[^/.]+)')
+    def receta_pdf(self, request, ficha_id=None):
+        """Generar PDF de receta médica"""
+        try:
+            ficha = FichaEmergencia.objects.select_related('paciente').get(id=ficha_id)
+            diagnostico = Diagnostico.objects.select_related('medico').get(ficha=ficha)
+            
+            context = {
+                'ficha': ficha,
+                'paciente': ficha.paciente,
+                'diagnostico': diagnostico,
+                'medico': diagnostico.medico,
+                'fecha_actual': timezone.now().strftime('%d/%m/%Y %H:%M'),
+            }
+            
+            html_string = render_to_string('pdf/receta_medica.html', context)
+            html = HTML(string=html_string)
+            pdf_file = html.write_pdf()
+            
+            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="receta_{ficha_id}.pdf"'
+            return response
+            
+        except FichaEmergencia.DoesNotExist:
+            return Response({'error': 'Ficha no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        except Diagnostico.DoesNotExist:
+            return Response({'error': 'No hay diagnóstico para esta ficha'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'], url_path='orden-examenes/(?P<ficha_id>[^/.]+)')
+    def orden_examenes_pdf(self, request, ficha_id=None):
+        """Generar PDF de orden de exámenes"""
+        try:
+            ficha = FichaEmergencia.objects.select_related('paciente').get(id=ficha_id)
+            diagnostico = Diagnostico.objects.select_related('medico').get(ficha=ficha)
+            
+            # Obtener solicitudes de exámenes si existen
+            examenes = SolicitudExamen.objects.filter(ficha=ficha)
+            examenes_list = []
+            for examen in examenes:
+                examenes_list.append({
+                    'nombre': examen.tipo_examen,
+                    'urgente': examen.prioridad == 'alta',
+                    'indicaciones': examen.observaciones
+                })
+            
+            # Si no hay solicitudes específicas, usar el texto del tratamiento/indicaciones
+            examenes_texto = diagnostico.indicaciones if diagnostico.indicaciones else ""
+            
+            context = {
+                'ficha': ficha,
+                'paciente': ficha.paciente,
+                'diagnostico': diagnostico,
+                'medico': diagnostico.medico,
+                'examenes_list': examenes_list if examenes_list else None,
+                'examenes_texto': examenes_texto,
+                'fecha_actual': timezone.now().strftime('%d/%m/%Y %H:%M'),
+            }
+            
+            html_string = render_to_string('pdf/orden_examenes.html', context)
+            html = HTML(string=html_string)
+            pdf_file = html.write_pdf()
+            
+            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="orden_examenes_{ficha_id}.pdf"'
+            return response
+            
+        except FichaEmergencia.DoesNotExist:
+            return Response({'error': 'Ficha no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        except Diagnostico.DoesNotExist:
+            return Response({'error': 'No hay diagnóstico para esta ficha'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'], url_path='alta/(?P<ficha_id>[^/.]+)')
+    def alta_pdf(self, request, ficha_id=None):
+        """Generar PDF de alta médica"""
+        try:
+            ficha = FichaEmergencia.objects.select_related('paciente').get(id=ficha_id)
+            
+            # Verificar que la ficha tenga alta
+            if ficha.estado != 'alta':
+                return Response({'error': 'El paciente no ha sido dado de alta'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Intentar obtener el diagnóstico
+            try:
+                diagnostico = Diagnostico.objects.select_related('medico').get(ficha=ficha)
+                medico = diagnostico.medico
+            except Diagnostico.DoesNotExist:
+                diagnostico = None
+                # Usar el usuario actual como médico si no hay diagnóstico
+                medico = request.user
+            
+            context = {
+                'ficha': ficha,
+                'paciente': ficha.paciente,
+                'diagnostico': diagnostico,
+                'medico': medico,
+                'fecha_actual': timezone.now().strftime('%d/%m/%Y %H:%M'),
+            }
+            
+            html_string = render_to_string('pdf/alta_medica.html', context)
+            html = HTML(string=html_string)
+            pdf_file = html.write_pdf()
+            
+            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="alta_{ficha_id}.pdf"'
+            return response
+            
+        except FichaEmergencia.DoesNotExist:
+            return Response({'error': 'Ficha no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

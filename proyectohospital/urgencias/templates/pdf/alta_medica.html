@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Alta Médica</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 2cm;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #333;
+        }
+        .header {
+            border: 3px solid #059669;
+            padding: 20px;
+            margin-bottom: 30px;
+            background-color: #ecfdf5;
+        }
+        .header h1 {
+            color: #059669;
+            font-size: 24pt;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .header .hospital-info {
+            text-align: center;
+            color: #666;
+            font-size: 10pt;
+            margin-bottom: 15px;
+        }
+        .medico-info {
+            background-color: #fff;
+            padding: 15px;
+            border-left: 4px solid #059669;
+            margin-bottom: 20px;
+        }
+        .medico-info p {
+            margin: 5px 0;
+            font-size: 10pt;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        .section-title {
+            background-color: #059669;
+            color: white;
+            padding: 10px 15px;
+            font-size: 13pt;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .patient-box {
+            border: 2px solid #d1d5db;
+            padding: 15px;
+            background-color: #f9fafb;
+            margin-bottom: 20px;
+        }
+        .patient-box p {
+            margin: 5px 0;
+        }
+        .alta-box {
+            border: 3px solid #059669;
+            padding: 20px;
+            background-color: #ecfdf5;
+            margin-bottom: 20px;
+        }
+        .alta-box h3 {
+            color: #059669;
+            margin-bottom: 15px;
+            font-size: 14pt;
+        }
+        .content-box {
+            background-color: white;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #10b981;
+        }
+        .content-box h4 {
+            color: #047857;
+            margin-bottom: 10px;
+        }
+        .warning-box {
+            background-color: #fef3c7;
+            border: 2px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .warning-box h4 {
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .info-item {
+            background-color: #f0fdf4;
+            padding: 10px;
+            border-left: 3px solid #10b981;
+        }
+        .info-item label {
+            font-weight: bold;
+            color: #047857;
+            font-size: 9pt;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .info-item .value {
+            color: #111827;
+            font-size: 11pt;
+        }
+        .signature-section {
+            margin-top: 60px;
+            text-align: center;
+        }
+        .signature-line {
+            border-top: 2px solid #333;
+            width: 300px;
+            margin: 40px auto 10px;
+        }
+        .footer {
+            position: fixed;
+            bottom: 1cm;
+            left: 2cm;
+            right: 2cm;
+            text-align: center;
+            font-size: 9pt;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 10px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            background-color: #d1fae5;
+            color: #065f46;
+            font-size: 12pt;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✅ ALTA MÉDICA</h1>
+        <div class="hospital-info">
+            <p><strong>Hospital General - Servicio de Urgencias</strong></p>
+            <p>Dirección: Av. Principal 1234, Santiago, Chile</p>
+            <p>Teléfono: +56 2 2345 6789</p>
+        </div>
+        <div class="medico-info">
+            <p><strong>Dr(a).: {{ medico.nombre }}</strong></p>
+            <p><strong>RUT:</strong> {{ medico.rut }}</p>
+            <p><strong>Fecha de Alta:</strong> {{ ficha.fecha_alta|date:"d/m/Y H:i" }}</p>
+            <p><strong>N° Alta:</strong> ALTA-{{ ficha.id }}-{{ fecha_actual|date:"YmdHis" }}</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">DATOS DEL PACIENTE</div>
+        <div class="patient-box">
+            <p><strong>Nombre:</strong> {{ paciente.nombre }}</p>
+            <p><strong>RUT:</strong> {{ paciente.rut|default:"Sin RUT registrado" }}</p>
+            <p><strong>Edad:</strong> {{ paciente.edad }} años</p>
+            <p><strong>Sexo:</strong> {{ paciente.get_sexo_display }}</p>
+            <p><strong>Previsión:</strong> {{ paciente.prevision|default:"No especificada" }}</p>
+            <p><strong>N° Ficha:</strong> {{ ficha.id }}</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="alta-box">
+            <h3>INFORMACIÓN DE LA ATENCIÓN</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Fecha de Ingreso:</label>
+                    <div class="value">{{ ficha.fecha_ingreso|date:"d/m/Y H:i" }}</div>
+                </div>
+                <div class="info-item">
+                    <label>Fecha de Alta:</label>
+                    <div class="value">{{ ficha.fecha_alta|date:"d/m/Y H:i" }}</div>
+                </div>
+                <div class="info-item">
+                    <label>Tipo de Alta:</label>
+                    <div class="value"><span class="badge">{{ ficha.get_tipo_alta_display|default:"Alta Voluntaria" }}</span></div>
+                </div>
+                <div class="info-item">
+                    <label>Prioridad al Ingreso:</label>
+                    <div class="value">{{ ficha.get_prioridad_display }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">MOTIVO DE CONSULTA</div>
+        <div class="content-box">
+            <p>{{ ficha.motivo_consulta }}</p>
+        </div>
+    </div>
+
+    {% if diagnostico %}
+    <div class="section">
+        <div class="section-title">DIAGNÓSTICO DE EGRESO</div>
+        <div class="content-box">
+            <h4>{{ diagnostico.diagnostico }}</h4>
+        </div>
+    </div>
+
+    {% if diagnostico.tratamiento %}
+    <div class="section">
+        <div class="section-title">TRATAMIENTO ADMINISTRADO</div>
+        <div class="content-box">
+            <p style="white-space: pre-wrap; line-height: 1.6;">{{ diagnostico.tratamiento }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if diagnostico.indicaciones %}
+    <div class="section">
+        <div class="warning-box">
+            <h4>📋 INDICACIONES AL ALTA:</h4>
+            <div style="white-space: pre-wrap; line-height: 1.6; margin-top: 10px;">{{ diagnostico.indicaciones }}</div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <div class="section">
+        <div class="warning-box">
+            <h4>⚠️ INSTRUCCIONES GENERALES:</h4>
+            <ul style="margin: 15px 0 0 20px; line-height: 1.8;">
+                <li>Seguir estrictamente las indicaciones médicas</li>
+                <li>Tomar los medicamentos en los horarios indicados</li>
+                <li>Consultar inmediatamente si presenta síntomas de alarma</li>
+                <li>Asistir a controles médicos programados</li>
+                <li>Reposo relativo según indicación médica</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="content-box">
+            <h4>🚨 SIGNOS DE ALARMA - CONSULTAR INMEDIATAMENTE SI PRESENTA:</h4>
+            <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+                <li>Dolor intenso o que no cede con analgésicos</li>
+                <li>Fiebre mayor a 38.5°C</li>
+                <li>Dificultad respiratoria</li>
+                <li>Sangrado abundante</li>
+                <li>Pérdida de conciencia o confusión</li>
+                <li>Vómitos persistentes o deshidratación</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="signature-section">
+        <div class="signature-line"></div>
+        <p><strong>{{ medico.nombre }}</strong></p>
+        <p>RUT: {{ medico.rut }}</p>
+        <p>Médico Cirujano</p>
+    </div>
+
+    <div class="footer">
+        <p><strong>El paciente fue dado de alta en buenas condiciones generales</strong></p>
+        <p>Este documento certifica el alta médica del paciente</p>
+        <p>Generado el {{ fecha_actual }}</p>
+    </div>
+</body>
+</html>

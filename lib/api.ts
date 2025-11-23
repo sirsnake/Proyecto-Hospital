@@ -316,3 +316,94 @@ export const solicitudesExamenesAPI = {
     })
   },
 }
+
+// API para documentos PDF
+export const documentosAPI = {
+  descargarFichaPDF: async (fichaId: number) => {
+    const response = await fetch(`${API_URL}/documentos/ficha/${fichaId}/`, {
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new Error('Error al generar PDF de ficha')
+    }
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `ficha_${fichaId}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  },
+
+  descargarRecetaPDF: async (fichaId: number) => {
+    const response = await fetch(`${API_URL}/documentos/receta/${fichaId}/`, {
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new Error('Error al generar receta médica')
+    }
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `receta_${fichaId}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  },
+
+  descargarOrdenExamenesPDF: async (fichaId: number) => {
+    const response = await fetch(`${API_URL}/documentos/orden-examenes/${fichaId}/`, {
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new Error('Error al generar orden de exámenes')
+    }
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `orden_examenes_${fichaId}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  },
+
+  descargarAltaPDF: async (fichaId: number) => {
+    const response = await fetch(`${API_URL}/documentos/alta/${fichaId}/`, {
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new Error('Error al generar alta médica')
+    }
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `alta_${fichaId}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  },
+
+  abrirFichaPDF: (fichaId: number) => {
+    window.open(`${API_URL}/documentos/ficha/${fichaId}/`, '_blank')
+  },
+
+  abrirRecetaPDF: (fichaId: number) => {
+    window.open(`${API_URL}/documentos/receta/${fichaId}/`, '_blank')
+  },
+
+  abrirOrdenExamenesPDF: (fichaId: number) => {
+    window.open(`${API_URL}/documentos/orden-examenes/${fichaId}/`, '_blank')
+  },
+
+  abrirAltaPDF: (fichaId: number) => {
+    window.open(`${API_URL}/documentos/alta/${fichaId}/`, '_blank')
+  },
+}
