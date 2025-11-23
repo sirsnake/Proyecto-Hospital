@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen, Notificacion
+from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -159,20 +159,3 @@ class FichaEmergenciaCreateSerializer(serializers.ModelSerializer):
         ficha = FichaEmergencia.objects.create(**validated_data)
         SignosVitales.objects.create(ficha=ficha, **signos_data)
         return ficha
-
-
-class NotificacionSerializer(serializers.ModelSerializer):
-    """Serializer para el modelo Notificacion"""
-    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
-    paciente_nombre = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Notificacion
-        fields = ['id', 'tipo', 'tipo_display', 'titulo', 'mensaje', 'ficha', 
-                  'paciente_nombre', 'leida', 'fecha_creacion', 'fecha_lectura', 'datos_extra']
-        read_only_fields = ['id', 'fecha_creacion', 'fecha_lectura']
-    
-    def get_paciente_nombre(self, obj):
-        if obj.ficha and obj.ficha.paciente:
-            return f"{obj.ficha.paciente.nombres} {obj.ficha.paciente.apellidos}"
-        return None

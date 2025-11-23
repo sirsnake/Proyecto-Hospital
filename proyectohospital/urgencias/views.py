@@ -6,13 +6,13 @@ from django.contrib.auth import login, logout
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.db.models import Q
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen, Notificacion
+from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
 from .serializers import (
     UsuarioSerializer, LoginSerializer, PacienteSerializer, 
     FichaEmergenciaSerializer, FichaEmergenciaCreateSerializer,
     SignosVitalesSerializer, SignosVitalesCreateSerializer,
     SolicitudMedicamentoSerializer, AnamnesisSerializer, 
-    DiagnosticoSerializer, SolicitudExamenSerializer, NotificacionSerializer
+    DiagnosticoSerializer, SolicitudExamenSerializer
 )
 
 
@@ -394,48 +394,3 @@ class SolicitudExamenViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(solicitud)
         return Response(serializer.data)
-
-
-class NotificacionViewSet(viewsets.ModelViewSet):
-    """ViewSet para gestionar notificaciones"""
-    serializer_class = NotificacionSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        """Filtrar notificaciones por usuario autenticado"""
-        return Notificacion.objects.filter(usuario_destinatario=self.request.user)
-    
-    @action(detail=False, methods=['get'])
-    def no_leidas(self, request):
-        """Obtener notificaciones no leídas"""
-        notificaciones = self.get_queryset().filter(leida=False)
-        serializer = self.get_serializer(notificaciones, many=True)
-        return Response({
-            'count': notificaciones.count(),
-            'notificaciones': serializer.data
-        })
-    
-    @action(detail=True, methods=['post'])
-    def marcar_leida(self, request, pk=None):
-        """Marcar una notificación como leída"""
-        from django.utils import timezone
-        
-        notificacion = self.get_object()
-        notificacion.leida = True
-        notificacion.fecha_lectura = timezone.now()
-        notificacion.save()
-        
-        serializer = self.get_serializer(notificacion)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['post'])
-    def marcar_todas_leidas(self, request):
-        """Marcar todas las notificaciones como leídas"""
-        from django.utils import timezone
-        
-        notificaciones = self.get_queryset().filter(leida=False)
-        notificaciones.update(leida=True, fecha_lectura=timezone.now())
-        
-        return Response({
-            'message': f'{notificaciones.count()} notificaciones marcadas como leídas'
-        })

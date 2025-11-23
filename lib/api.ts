@@ -316,26 +316,3 @@ export const solicitudesExamenesAPI = {
     })
   },
 }
-
-// API de notificaciones
-export const notificacionesAPI = {
-  listar: async () => {
-    return fetchWithCredentials(`${API_URL}/notificaciones/`)
-  },
-
-  noLeidas: async () => {
-    return fetchWithCredentials(`${API_URL}/notificaciones/no_leidas/`)
-  },
-
-  marcarLeida: async (id: number) => {
-    return fetchWithCredentials(`${API_URL}/notificaciones/${id}/marcar_leida/`, {
-      method: 'POST',
-    })
-  },
-
-  marcarTodasLeidas: async () => {
-    return fetchWithCredentials(`${API_URL}/notificaciones/marcar_todas_leidas/`, {
-      method: 'POST',
-    })
-  },
-}

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen, Notificacion
+from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
 
 
 @admin.register(Usuario)
@@ -63,12 +63,3 @@ class SolicitudExamenAdmin(admin.ModelAdmin):
     list_filter = ['estado', 'prioridad', 'tipo_examen', 'fecha_solicitud']
     search_fields = ['tipo_examen', 'examenes_especificos', 'justificacion']
     readonly_fields = ['fecha_solicitud', 'fecha_actualizacion']
-
-
-@admin.register(Notificacion)
-class NotificacionAdmin(admin.ModelAdmin):
-    list_display = ['titulo', 'tipo', 'usuario_destinatario', 'ficha', 'leida', 'fecha_creacion']
-    list_filter = ['tipo', 'leida', 'fecha_creacion']
-    search_fields = ['titulo', 'mensaje', 'usuario_destinatario__username']
-    readonly_fields = ['fecha_creacion', 'fecha_lectura']
-    date_hierarchy = 'fecha_creacion'
