@@ -112,18 +112,7 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
     onConfirm(formData)
     setGuardado(true)
     
-    // Resetear formulario después de 5 segundos
-    setTimeout(() => {
-      setGuardado(false)
-      setFormData({
-        codigoCIE10: "",
-        diagnostico: "",
-        descripcion: "",
-        indicaciones: "",
-        medicamentos: "",
-        tipoAlta: "",
-      })
-    }, 5000)
+    // NO resetear automáticamente - mantener los botones de PDF visible
   }
 
   if (!ficha) return null
@@ -322,6 +311,14 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
               className="w-full border-slate-700 text-slate-300 hover:bg-slate-800" 
               onClick={() => {
                 setGuardado(false)
+                setFormData({
+                  codigoCIE10: "",
+                  diagnostico: "",
+                  descripcion: "",
+                  indicaciones: "",
+                  medicamentos: "",
+                  tipoAlta: "",
+                })
                 onOpenChange(false)
               }}
             >
@@ -338,7 +335,7 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Guardar Diagnóstico y Dar Alta
+              Guardar Diagnóstico
             </Button>
             <Button variant="destructive" className="bg-red-600 hover:bg-red-700" onClick={() => onOpenChange(false)}>
               Cancelar

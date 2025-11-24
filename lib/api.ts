@@ -160,6 +160,10 @@ export const fichasAPI = {
     return fetchWithCredentials(`${API_URL}/fichas/${id}/`)
   },
 
+  atendidas: async () => {
+    return fetchWithCredentials(`${API_URL}/fichas/atendidas/`)
+  },
+
   crear: async (data: any) => {
     return fetchWithCredentials(`${API_URL}/fichas/`, {
       method: 'POST',
@@ -405,5 +409,150 @@ export const documentosAPI = {
 
   abrirAltaPDF: (fichaId: number) => {
     window.open(`${API_URL}/documentos/alta/${fichaId}/`, '_blank')
+  },
+}
+
+// API para gestión de usuarios (admin)
+export const usuariosAPI = {
+  listar: async (params?: { rol?: string; search?: string; activo?: boolean }) => {
+    const query = new URLSearchParams()
+    if (params?.rol) query.append('rol', params.rol)
+    if (params?.search) query.append('search', params.search)
+    if (params?.activo !== undefined) query.append('activo', params.activo.toString())
+    
+    return fetchWithCredentials(`${API_URL}/usuarios/?${query.toString()}`)
+  },
+
+  obtener: async (id: number) => {
+    return fetchWithCredentials(`${API_URL}/usuarios/${id}/`)
+  },
+
+  crear: async (data: any) => {
+    return fetchWithCredentials(`${API_URL}/usuarios/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  actualizar: async (id: number, data: any) => {
+    return fetchWithCredentials(`${API_URL}/usuarios/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  actualizarParcial: async (id: number, data: any) => {
+    return fetchWithCredentials(`${API_URL}/usuarios/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  eliminar: async (id: number) => {
+    return fetchWithCredentials(`${API_URL}/usuarios/${id}/`, {
+      method: 'DELETE',
+    })
+  },
+
+  estadisticas: async () => {
+    return fetchWithCredentials(`${API_URL}/usuarios/estadisticas/`)
+  },
+}
+
+// API para logs de auditoría (admin)
+export const auditLogsAPI = {
+  listar: async (params?: { 
+    usuario?: number; 
+    accion?: string; 
+    modelo?: string;
+    fecha_desde?: string;
+    fecha_hasta?: string;
+  }) => {
+    const query = new URLSearchParams()
+    if (params?.usuario) query.append('usuario', params.usuario.toString())
+    if (params?.accion) query.append('accion', params.accion)
+    if (params?.modelo) query.append('modelo', params.modelo)
+    if (params?.fecha_desde) query.append('fecha_desde', params.fecha_desde)
+    if (params?.fecha_hasta) query.append('fecha_hasta', params.fecha_hasta)
+    
+    return fetchWithCredentials(`${API_URL}/audit-logs/?${query.toString()}`)
+  },
+
+  resumen: async () => {
+    return fetchWithCredentials(`${API_URL}/audit-logs/resumen/`)
+  },
+}
+
+// Configuración del Hospital
+export const configuracionAPI = {
+  actual: async () => {
+    return fetchWithCredentials(`${API_URL}/configuracion/actual/`)
+  },
+
+  actualizar: async (data: {
+    camas_totales: number
+    camas_uci: number
+    salas_emergencia: number
+    boxes_atencion: number
+  }) => {
+    return fetchWithCredentials(`${API_URL}/configuracion/actualizar/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+}
+
+// Camas
+export const camasAPI = {
+  listar: async (filtros?: { tipo?: string; estado?: string; piso?: number }) => {
+    const params = new URLSearchParams()
+    if (filtros?.tipo) params.append('tipo', filtros.tipo)
+    if (filtros?.estado) params.append('estado', filtros.estado)
+    if (filtros?.piso) params.append('piso', filtros.piso.toString())
+    
+    return fetchWithCredentials(`${API_URL}/camas/?${params}`)
+  },
+
+  crear: async (data: any) => {
+    return fetchWithCredentials(`${API_URL}/camas/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  actualizar: async (id: number, data: any) => {
+    return fetchWithCredentials(`${API_URL}/camas/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  eliminar: async (id: number) => {
+    return fetchWithCredentials(`${API_URL}/camas/${id}/`, {
+      method: 'DELETE',
+    })
+  },
+
+  disponibles: async (tipo?: string) => {
+    const params = new URLSearchParams()
+    if (tipo) params.append('tipo', tipo)
+    return fetchWithCredentials(`${API_URL}/camas/disponibles/?${params}`)
+  },
+
+  estadisticas: async () => {
+    return fetchWithCredentials(`${API_URL}/camas/estadisticas/`)
+  },
+
+  asignar: async (id: number, fichaId: number) => {
+    return fetchWithCredentials(`${API_URL}/camas/${id}/asignar/`, {
+      method: 'POST',
+      body: JSON.stringify({ ficha_id: fichaId }),
+    })
+  },
+
+  liberar: async (id: number) => {
+    return fetchWithCredentials(`${API_URL}/camas/${id}/liberar/`, {
+      method: 'POST',
+    })
   },
 }

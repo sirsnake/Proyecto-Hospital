@@ -6,7 +6,7 @@
     <style>
         @page {
             size: letter;
-            margin: 2cm;
+            margin: 2cm 1.5cm;
         }
         * {
             margin: 0;
@@ -14,204 +14,311 @@
             box-sizing: border-box;
         }
         body {
-            font-family: 'Arial', sans-serif;
-            font-size: 11pt;
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 10pt;
             line-height: 1.4;
-            color: #333;
+            color: #000;
         }
+        
+        /* HEADER PROFESIONAL */
         .header {
-            text-align: center;
-            border-bottom: 3px solid #2563eb;
+            border-bottom: 3px solid #1e40af;
             padding-bottom: 15px;
             margin-bottom: 20px;
         }
-        .header h1 {
-            color: #2563eb;
-            font-size: 20pt;
-            margin-bottom: 5px;
-        }
-        .header p {
-            color: #666;
-            font-size: 10pt;
-        }
-        .section {
-            margin-bottom: 20px;
-        }
-        .section-title {
-            background-color: #2563eb;
-            color: white;
-            padding: 8px 12px;
-            font-size: 12pt;
-            font-weight: bold;
+        .header-top {
+            display: table;
+            width: 100%;
             margin-bottom: 10px;
         }
-        .data-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 15px;
+        .header-left {
+            display: table-cell;
+            width: 70%;
+            vertical-align: top;
         }
-        .data-item {
-            padding: 8px;
-            border: 1px solid #e5e7eb;
-            background-color: #f9fafb;
+        .header-right {
+            display: table-cell;
+            width: 30%;
+            vertical-align: top;
+            text-align: right;
         }
-        .data-item label {
+        .hospital-name {
+            font-size: 16pt;
             font-weight: bold;
-            color: #374151;
-            font-size: 9pt;
-            display: block;
+            color: #1e40af;
             margin-bottom: 3px;
         }
-        .data-item .value {
-            color: #111827;
+        .department {
             font-size: 11pt;
+            color: #475569;
+            font-weight: 600;
         }
-        .full-width {
-            grid-column: 1 / -1;
+        .hospital-address {
+            font-size: 8pt;
+            color: #64748b;
+            margin-top: 5px;
         }
-        .badge {
+        .document-title {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #1e40af;
+            text-align: center;
+            margin: 15px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .document-info {
+            text-align: center;
+            font-size: 9pt;
+            color: #64748b;
+            margin-bottom: 20px;
+        }
+        
+        /* SECCIONES */
+        .section {
+            margin-bottom: 18px;
+            page-break-inside: avoid;
+        }
+        .section-header {
+            background: #f1f5f9;
+            border-left: 4px solid #1e40af;
+            padding: 8px 12px;
+            font-size: 11pt;
+            font-weight: bold;
+            color: #1e293b;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* TABLA DE DATOS */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        .data-table td {
+            padding: 6px 10px;
+            border: 1px solid #e2e8f0;
+            font-size: 9.5pt;
+        }
+        .data-table td.label {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #475569;
+            width: 30%;
+        }
+        .data-table td.value {
+            background: #fff;
+            color: #0f172a;
+        }
+        
+        /* BADGE DE PRIORIDAD */
+        .priority-badge {
             display: inline-block;
             padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 9pt;
+            border-radius: 3px;
             font-weight: bold;
+            font-size: 9pt;
         }
-        .badge-alta { background-color: #fee2e2; color: #991b1b; }
-        .badge-media { background-color: #fef3c7; color: #92400e; }
-        .badge-baja { background-color: #d1fae5; color: #065f46; }
-        .signos-table {
+        .priority-c1 { background: #fee2e2; color: #991b1b; }
+        .priority-c2 { background: #fed7aa; color: #9a3412; }
+        .priority-c3 { background: #fef3c7; color: #92400e; }
+        .priority-c4 { background: #d1fae5; color: #065f46; }
+        .priority-c5 { background: #dbeafe; color: #1e40af; }
+        
+        /* TABLA DE SIGNOS VITALES */
+        .vitals-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
         }
-        .signos-table th {
-            background-color: #f3f4f6;
-            padding: 8px;
-            text-align: left;
-            font-size: 9pt;
-            border: 1px solid #e5e7eb;
-        }
-        .signos-table td {
-            padding: 6px 8px;
-            border: 1px solid #e5e7eb;
-            font-size: 10pt;
-        }
-        .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 2px solid #e5e7eb;
+        .vitals-table th {
+            background: #1e40af;
+            color: white;
+            padding: 8px 6px;
             text-align: center;
+            font-size: 8.5pt;
+            font-weight: 600;
+        }
+        .vitals-table td {
+            padding: 6px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
             font-size: 9pt;
-            color: #6b7280;
         }
-        .diagnostico-box {
-            border: 2px solid #2563eb;
-            padding: 15px;
+        .vitals-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        
+        /* CAJA DE TEXTO */
+        .text-box {
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            padding: 12px;
+            min-height: 60px;
+            font-size: 9.5pt;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            border-radius: 3px;
+        }
+        
+        /* DIAGNÓSTICO */
+        .diagnosis-box {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+            padding: 12px;
+            border-radius: 4px;
             margin-top: 10px;
-            background-color: #eff6ff;
         }
-        .diagnostico-box h3 {
-            color: #2563eb;
-            margin-bottom: 10px;
+        .diagnosis-box .diagnosis-title {
+            font-weight: bold;
+            color: #1e40af;
+            font-size: 10pt;
+            margin-bottom: 6px;
+        }
+        .diagnosis-box .diagnosis-content {
+            font-size: 9.5pt;
+            color: #1e293b;
+            line-height: 1.5;
+        }
+        
+        /* FOOTER */
+        .footer {
+            position: fixed;
+            bottom: 1cm;
+            left: 1.5cm;
+            right: 1.5cm;
+            text-align: center;
+            font-size: 7pt;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
         }
     </style>
 </head>
 <body>
+    <!-- HEADER -->
     <div class="header">
-        <h1>🏥 FICHA DE EMERGENCIA</h1>
-        <p>Sistema de Gestión de Urgencias - Hospital General</p>
-        <p>Fecha de impresión: {{ fecha_actual }}</p>
+        <div class="header-top">
+            <div class="header-left">
+                <div class="hospital-name">Hospital General</div>
+                <div class="department">Servicio de Urgencias</div>
+                <div class="hospital-address">Av. Principal 1234, Santiago, Chile | Tel: +56 2 2345 6789</div>
+            </div>
+            <div class="header-right">
+                <div style="font-size: 9pt; color: #64748b;">N° Ficha</div>
+                <div style="font-size: 18pt; font-weight: bold; color: #1e40af;">{{ ficha.id }}</div>
+            </div>
+        </div>
     </div>
-
+    
+    <div class="document-title">Ficha de Emergencia</div>
+    <div class="document-info">Generado el {{ fecha_actual }}</div>
+    
+    <!-- DATOS DEL PACIENTE -->
     <div class="section">
-        <div class="section-title">INFORMACIÓN DE LA FICHA</div>
-        <div class="data-grid">
-            <div class="data-item">
-                <label>N° Ficha:</label>
-                <div class="value">{{ ficha.id }}</div>
-            </div>
-            <div class="data-item">
-                <label>Fecha de Ingreso:</label>
-                <div class="value">{{ ficha.fecha_ingreso|date:"d/m/Y H:i" }}</div>
-            </div>
-            <div class="data-item">
-                <label>Prioridad:</label>
-                <div class="value">
-                    <span class="badge badge-{{ ficha.prioridad|lower }}">
+        <div class="section-header">Datos del Paciente</div>
+        <table class="data-table">
+            <tr>
+                <td class="label">Nombre Completo:</td>
+                <td class="value">
+                    {% if ficha.paciente %}
+                        {{ ficha.paciente.nombre }}
+                    {% else %}
+                        <strong style="color: #dc2626;">PACIENTE NN (Sin Identificación)</strong>
+                    {% endif %}
+                </td>
+                <td class="label">RUT:</td>
+                <td class="value">
+                    {% if ficha.paciente and ficha.paciente.rut %}
+                        {{ ficha.paciente.rut }}
+                    {% else %}
+                        Sin RUT
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Edad:</td>
+                <td class="value">
+                    {% if ficha.paciente %}
+                        {{ ficha.paciente.edad }} años
+                    {% else %}
+                        Desconocida
+                    {% endif %}
+                </td>
+                <td class="label">Sexo:</td>
+                <td class="value">
+                    {% if ficha.paciente %}
+                        {{ ficha.paciente.get_sexo_display }}
+                    {% else %}
+                        No especificado
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Previsión:</td>
+                <td class="value">
+                    {% if ficha.paciente and ficha.paciente.prevision %}
+                        {{ ficha.paciente.prevision }}
+                    {% else %}
+                        No especificada
+                    {% endif %}
+                </td>
+                <td class="label">Acompañante:</td>
+                <td class="value">
+                    {% if ficha.paciente and ficha.paciente.acompanante %}
+                        {{ ficha.paciente.acompanante }}
+                    {% else %}
+                        Sin acompañante
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+    
+    <!-- INFORMACIÓN DE ATENCIÓN -->
+    <div class="section">
+        <div class="section-header">Información de Atención</div>
+        <table class="data-table">
+            <tr>
+                <td class="label">Fecha de Ingreso:</td>
+                <td class="value">{{ ficha.fecha_registro|date:"d/m/Y H:i" }}</td>
+                <td class="label">Prioridad:</td>
+                <td class="value">
+                    <span class="priority-badge priority-{{ ficha.prioridad|lower }}">
                         {{ ficha.get_prioridad_display }}
                     </span>
-                </div>
-            </div>
-            <div class="data-item">
-                <label>Estado Actual:</label>
-                <div class="value"><strong>{{ ficha.get_estado_display }}</strong></div>
-            </div>
-        </div>
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Estado Actual:</td>
+                <td class="value">{{ ficha.get_estado_display }}</td>
+                <td class="label">Box de Atención:</td>
+                <td class="value">{{ ficha.box_atencion|default:"No asignado" }}</td>
+            </tr>
+        </table>
     </div>
-
+    
+    <!-- MOTIVO DE CONSULTA -->
     <div class="section">
-        <div class="section-title">DATOS DEL PACIENTE</div>
-        <div class="data-grid">
-            <div class="data-item">
-                <label>Nombre Completo:</label>
-                <div class="value">{{ paciente.nombre }}</div>
-            </div>
-            <div class="data-item">
-                <label>RUT:</label>
-                <div class="value">{{ paciente.rut|default:"Sin RUT (NN)" }}</div>
-            </div>
-            <div class="data-item">
-                <label>Edad:</label>
-                <div class="value">{{ paciente.edad }} años</div>
-            </div>
-            <div class="data-item">
-                <label>Sexo:</label>
-                <div class="value">{{ paciente.get_sexo_display }}</div>
-            </div>
-            <div class="data-item">
-                <label>Teléfono:</label>
-                <div class="value">{{ paciente.telefono|default:"No registrado" }}</div>
-            </div>
-            <div class="data-item">
-                <label>Previsión:</label>
-                <div class="value">{{ paciente.prevision|default:"No especificada" }}</div>
-            </div>
-            <div class="data-item full-width">
-                <label>Dirección:</label>
-                <div class="value">{{ paciente.direccion|default:"No registrada" }}</div>
-            </div>
-        </div>
+        <div class="section-header">Motivo de Consulta</div>
+        <div class="text-box">{{ ficha.motivo_consulta|default:"No especificado" }}</div>
     </div>
-
-    <div class="section">
-        <div class="section-title">MOTIVO DE CONSULTA</div>
-        <div class="data-item full-width">
-            <div class="value">{{ ficha.motivo_consulta }}</div>
-        </div>
-    </div>
-
-    {% if ficha.anamnesis %}
-    <div class="section">
-        <div class="section-title">ANAMNESIS</div>
-        <div class="data-item full-width">
-            <div class="value">{{ ficha.anamnesis }}</div>
-        </div>
-    </div>
-    {% endif %}
-
+    
+    <!-- SIGNOS VITALES -->
     {% if signos_vitales %}
     <div class="section">
-        <div class="section-title">SIGNOS VITALES</div>
-        <table class="signos-table">
+        <div class="section-header">Signos Vitales</div>
+        <table class="vitals-table">
             <thead>
                 <tr>
                     <th>Fecha/Hora</th>
-                    <th>PA</th>
-                    <th>FC</th>
-                    <th>FR</th>
-                    <th>Temp</th>
-                    <th>SpO2</th>
+                    <th>PA (mmHg)</th>
+                    <th>FC (lpm)</th>
+                    <th>FR (rpm)</th>
+                    <th>Temp (°C)</th>
+                    <th>SatO₂ (%)</th>
                     <th>Glicemia</th>
                 </tr>
             </thead>
@@ -219,11 +326,11 @@
                 {% for signo in signos_vitales %}
                 <tr>
                     <td>{{ signo.timestamp|date:"d/m H:i" }}</td>
-                    <td>{{ signo.presion_sistolica }}/{{ signo.presion_diastolica }}</td>
-                    <td>{{ signo.frecuencia_cardiaca }}</td>
-                    <td>{{ signo.frecuencia_respiratoria }}</td>
-                    <td>{{ signo.temperatura }}°C</td>
-                    <td>{{ signo.saturacion_oxigeno }}%</td>
+                    <td>{{ signo.presion_sistolica|default:"-" }}/{{ signo.presion_diastolica|default:"-" }}</td>
+                    <td>{{ signo.frecuencia_cardiaca|default:"-" }}</td>
+                    <td>{{ signo.frecuencia_respiratoria|default:"-" }}</td>
+                    <td>{{ signo.temperatura|default:"-" }}</td>
+                    <td>{{ signo.saturacion_oxigeno|default:"-" }}</td>
                     <td>{{ signo.glicemia|default:"-" }}</td>
                 </tr>
                 {% endfor %}
@@ -231,41 +338,51 @@
         </table>
     </div>
     {% endif %}
-
+    
+    <!-- DIAGNÓSTICO -->
     {% if diagnostico %}
     <div class="section">
-        <div class="section-title">DIAGNÓSTICO MÉDICO</div>
-        <div class="diagnostico-box">
-            <h3>Diagnóstico: {{ diagnostico.diagnostico }}</h3>
-            <div class="data-grid" style="margin-top: 15px;">
-                <div class="data-item">
-                    <label>Médico:</label>
-                    <div class="value">{{ diagnostico.medico.nombre }}</div>
-                </div>
-                <div class="data-item">
-                    <label>Fecha:</label>
-                    <div class="value">{{ diagnostico.fecha|date:"d/m/Y H:i" }}</div>
-                </div>
-                {% if diagnostico.tratamiento %}
-                <div class="data-item full-width">
-                    <label>Tratamiento:</label>
-                    <div class="value">{{ diagnostico.tratamiento }}</div>
-                </div>
-                {% endif %}
-                {% if diagnostico.indicaciones %}
-                <div class="data-item full-width">
-                    <label>Indicaciones:</label>
-                    <div class="value">{{ diagnostico.indicaciones }}</div>
-                </div>
-                {% endif %}
-            </div>
+        <div class="section-header">Diagnóstico Médico</div>
+        <table class="data-table">
+            <tr>
+                <td class="label">Médico Tratante:</td>
+                <td class="value" colspan="3">
+                    Dr(a). {{ diagnostico.medico.nombre }} - RUT: {{ diagnostico.medico.rut }}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Fecha Diagnóstico:</td>
+                <td class="value" colspan="3">{{ diagnostico.fecha_diagnostico|date:"d/m/Y H:i" }}</td>
+            </tr>
+        </table>
+        
+        <div class="diagnosis-box">
+            <div class="diagnosis-title">Diagnóstico CIE-10:</div>
+            <div class="diagnosis-content">{{ diagnostico.diagnostico_cie10 }}</div>
+        </div>
+        
+        <div style="margin-top: 12px;">
+            <div style="font-weight: bold; color: #475569; margin-bottom: 6px; font-size: 10pt;">Descripción:</div>
+            <div class="text-box">{{ diagnostico.descripcion|default:"No especificada" }}</div>
+        </div>
+        
+        <div style="margin-top: 12px;">
+            <div style="font-weight: bold; color: #475569; margin-bottom: 6px; font-size: 10pt;">Indicaciones Médicas:</div>
+            <div class="text-box">{{ diagnostico.indicaciones_medicas|default:"Sin indicaciones" }}</div>
+        </div>
+    </div>
+    {% else %}
+    <div class="section">
+        <div class="section-header">Diagnóstico Médico</div>
+        <div class="text-box" style="text-align: center; color: #64748b; font-style: italic;">
+            Paciente en espera de evaluación médica
         </div>
     </div>
     {% endif %}
-
+    
+    <!-- FOOTER -->
     <div class="footer">
-        <p><strong>Hospital General - Sistema de Urgencias</strong></p>
-        <p>Este documento es confidencial y solo debe ser usado para fines médicos</p>
+        <p>Hospital General - Servicio de Urgencias | Este documento es confidencial</p>
         <p>Generado el {{ fecha_actual }}</p>
     </div>
 </body>

@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI, solicitudesExamenesAPI, documentosAPI } from "@/lib/api"
+import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI, solicitudesExamenesAPI, documentosAPI, camasAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,19 +12,21 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ModalDiagnostico } from "@/components/modal-diagnostico"
 import { ModalExamenes } from "@/components/modal-examenes"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
 
 export default function MedicoDashboard() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [user, setUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("casos")
   const [modalBuscarOpen, setModalBuscarOpen] = useState(false)
   const [fichasActivas, setFichasActivas] = useState<any[]>([])
+  const [fichasAtendidas, setFichasAtendidas] = useState<any[]>([])
   const [solicitudesPendientes, setSolicitudesPendientes] = useState<any[]>([])
-  const [modalDiagnosticoOpen, setModalDiagnosticoOpen] = useState(false)
   const [modalExamenesOpen, setModalExamenesOpen] = useState(false)
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null)
   const [fichaParaExamen, setFichaParaExamen] = useState<any>(null)
@@ -32,8 +34,22 @@ export default function MedicoDashboard() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [motivoRechazo, setMotivoRechazo] = useState<{ [key: number]: string }>({})
-  const [diagnosticoGuardado, setDiagnosticoGuardado] = useState<any>(null)
-  const [mostrarBotonesPDF, setMostrarBotonesPDF] = useState(false)
+  
+  // Estado para el formulario de diagnóstico
+  const [diagnosticoForm, setDiagnosticoForm] = useState({
+    codigoCIE10: "",
+    diagnostico: "",
+    indicaciones: "",
+    medicamentos: "",
+    tipoAlta: ""
+  })
+  const [diagnosticoGuardado, setDiagnosticoGuardado] = useState(false)
+  
+  // Estados para gestión de camas
+  const [camasDisponibles, setCamasDisponibles] = useState<any[]>([])
+  const [modalCamasOpen, setModalCamasOpen] = useState(false)
+  const [fichaParaCama, setFichaParaCama] = useState<any>(null)
+  const [tipoCamaFiltro, setTipoCamaFiltro] = useState("all")
 
   useEffect(() => {
     const currentUser = getSession()
@@ -42,6 +58,13 @@ export default function MedicoDashboard() {
       return
     }
     setUser(currentUser)
+    
+    // Verificar si hay un parámetro tab en la URL
+    const tab = searchParams?.get('tab')
+    if (tab) {
+      setActiveTab(tab)
+    }
+    
     cargarDatos()
     
     // Auto-refresh cada 60 segundos
@@ -98,7 +121,17 @@ export default function MedicoDashboard() {
           alergiasMedicamentosas: ficha.anamnesis.alergias_medicamentosas || [],
           alergiasCriticas: (ficha.anamnesis.alergias_medicamentosas || []).length > 0,
           antecedentesQuirurgicos: ficha.anamnesis.antecedentes_quirurgicos
-        } : null
+        } : null,
+        solicitudesExamenes: (ficha.solicitudes_examenes || []).map((se: any) => ({
+          id: se.id,
+          medico: se.medico_nombre || `Médico #${se.medico}`,
+          tipoExamen: se.tipo_examen,
+          examenesEspecificos: se.examenes_especificos,
+          justificacion: se.justificacion,
+          prioridad: se.prioridad,
+          estado: se.estado,
+          fechaSolicitud: se.fecha_solicitud
+        }))
       }))
       
       console.log('🏥 Fichas transformadas:', fichasTransformadas)
@@ -120,11 +153,78 @@ export default function MedicoDashboard() {
       
       console.log('💊 Solicitudes transformadas:', solicitudesTransformadas)
       setSolicitudesPendientes(solicitudesTransformadas)
+      
+      // Cargar fichas atendidas (con diagnóstico)
+      const fichasAtendidasResponse = await fichasAPI.atendidas()
+      console.log('📋 Fichas atendidas response:', fichasAtendidasResponse)
+      
+      const fichasConDiagnostico = (Array.isArray(fichasAtendidasResponse) ? fichasAtendidasResponse : [])
+        .map((ficha: any) => ({
+          id: ficha.id,
+          paciente: {
+            id: ficha.paciente?.id,
+            rut: ficha.paciente?.rut,
+            nombres: ficha.paciente?.nombres,
+            apellidos: ficha.paciente?.apellidos,
+            esNN: ficha.paciente?.es_nn || false,
+            idTemporal: ficha.paciente?.id_temporal
+          },
+          diagnostico: ficha.diagnostico,
+          fechaRegistro: ficha.fecha_registro,
+          estado: ficha.estado
+        }))
+      setFichasAtendidas(fichasConDiagnostico)
+      
     } catch (err: any) {
       console.error('❌ Error al cargar datos:', err)
       setError(err.message || "Error al cargar datos")
       setFichasActivas([])
       setSolicitudesPendientes([])
+      setFichasAtendidas([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const cargarCamasDisponibles = async (tipo?: string) => {
+    try {
+      const camas = await camasAPI.disponibles(tipo !== 'all' ? tipo : undefined)
+      setCamasDisponibles(Array.isArray(camas) ? camas : [])
+    } catch (err: any) {
+      console.error('Error cargando camas:', err)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las camas disponibles",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const abrirModalCamas = async (ficha: any) => {
+    setFichaParaCama(ficha)
+    setModalCamasOpen(true)
+    await cargarCamasDisponibles()
+  }
+
+  const handleAsignarCama = async (camaId: number) => {
+    if (!fichaParaCama) return
+    
+    try {
+      setLoading(true)
+      await camasAPI.asignar(camaId, fichaParaCama.id)
+      toast({
+        title: "Cama asignada",
+        description: `Cama asignada exitosamente al paciente ${fichaParaCama.paciente.nombres} ${fichaParaCama.paciente.apellidos}`,
+      })
+      setModalCamasOpen(false)
+      setFichaParaCama(null)
+      await cargarDatos()
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "No se pudo asignar la cama",
+        variant: "destructive"
+      })
     } finally {
       setLoading(false)
     }
@@ -175,12 +275,26 @@ export default function MedicoDashboard() {
 
   const handleAbrirDiagnostico = (ficha: any) => {
     setFichaSeleccionada(ficha)
-    setModalDiagnosticoOpen(true)
+    setDiagnosticoGuardado(false)
+    setDiagnosticoForm({
+      codigoCIE10: "",
+      diagnostico: "",
+      indicaciones: "",
+      medicamentos: "",
+      tipoAlta: ""
+    })
+    setActiveTab("diagnostico")
   }
 
   const handleAbrirExamenes = (ficha: any) => {
     setFichaParaExamen(ficha)
     setModalExamenesOpen(true)
+  }
+  
+  const handleVerFichaAtendida = (ficha: any) => {
+    setFichaSeleccionada(ficha)
+    setDiagnosticoGuardado(true)
+    setActiveTab("diagnostico")
   }
 
   const handleConfirmExamenes = async (solicitud: any) => {
@@ -215,18 +329,23 @@ export default function MedicoDashboard() {
     }
   }
 
-  const handleConfirmDiagnostico = async (diagnostico: any) => {
+  const handleGuardarDiagnostico = async () => {
     try {
       setLoading(true)
       setError("")
       
+      if (!diagnosticoForm.codigoCIE10 || !diagnosticoForm.diagnostico || !diagnosticoForm.indicaciones || !diagnosticoForm.tipoAlta) {
+        setError("⚠️ Por favor complete todos los campos obligatorios")
+        return
+      }
+      
       const data = {
         ficha: fichaSeleccionada.id,
         medico: user.id,
-        diagnostico_cie10: diagnostico.codigoCIE10,
-        descripcion: diagnostico.diagnostico,
-        indicaciones_medicas: diagnostico.indicaciones,
-        medicamentos_prescritos: diagnostico.medicamentos || ""
+        diagnostico_cie10: diagnosticoForm.codigoCIE10,
+        descripcion: diagnosticoForm.diagnostico,
+        indicaciones_medicas: diagnosticoForm.indicaciones,
+        medicamentos_prescritos: diagnosticoForm.medicamentos || ""
       }
       
       console.log('📋 Enviando diagnóstico:', data)
@@ -235,16 +354,9 @@ export default function MedicoDashboard() {
       console.log('✅ Diagnóstico guardado:', response)
       
       setSuccess("✅ Diagnóstico guardado exitosamente. Paciente dado de alta.")
-      setDiagnosticoGuardado({ ...response, fichaId: fichaSeleccionada.id })
-      setMostrarBotonesPDF(true)
+      setDiagnosticoGuardado(true)
       
-      // No cerrar el modal inmediatamente, mostrar botones de PDF
-      // setFichaSeleccionada(null)
-      // setModalDiagnosticoOpen(false)
       await cargarDatos()
-      
-      // Cambiar a tab de casos activos después de guardar
-      setActiveTab("casos")
       
       setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
@@ -315,95 +427,6 @@ export default function MedicoDashboard() {
           </Alert>
         )}
         
-        {/* Botones de impresión de documentos PDF */}
-        {mostrarBotonesPDF && diagnosticoGuardado && (
-          <Alert className="mb-6 bg-blue-500/10 border-blue-500/30 text-blue-400">
-            <AlertDescription>
-              <div className="space-y-3">
-                <p className="font-semibold">📄 Documentos disponibles para imprimir:</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <Button
-                    className="bg-purple-600 hover:bg-purple-700"
-                    onClick={async () => {
-                      try {
-                        await documentosAPI.descargarFichaPDF(diagnosticoGuardado.fichaId)
-                        toast({ title: "PDF descargado", description: "Ficha completa descargada" })
-                      } catch (error) {
-                        toast({ title: "Error", description: "No se pudo descargar la ficha", variant: "destructive" })
-                      }
-                    }}
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Ficha Completa
-                  </Button>
-                  <Button
-                    className="bg-green-600 hover:bg-green-700"
-                    onClick={async () => {
-                      try {
-                        await documentosAPI.descargarRecetaPDF(diagnosticoGuardado.fichaId)
-                        toast({ title: "PDF descargado", description: "Receta médica descargada" })
-                      } catch (error) {
-                        toast({ title: "Error", description: "No se pudo descargar la receta", variant: "destructive" })
-                      }
-                    }}
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    Receta Médica
-                  </Button>
-                  <Button
-                    className="bg-indigo-600 hover:bg-indigo-700"
-                    onClick={async () => {
-                      try {
-                        await documentosAPI.descargarOrdenExamenesPDF(diagnosticoGuardado.fichaId)
-                        toast({ title: "PDF descargado", description: "Orden de exámenes descargada" })
-                      } catch (error) {
-                        toast({ title: "Error", description: "No se pudo descargar la orden", variant: "destructive" })
-                      }
-                    }}
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                    Orden de Exámenes
-                  </Button>
-                  <Button
-                    className="bg-teal-600 hover:bg-teal-700"
-                    onClick={async () => {
-                      try {
-                        await documentosAPI.descargarAltaPDF(diagnosticoGuardado.fichaId)
-                        toast({ title: "PDF descargado", description: "Alta médica descargada" })
-                      } catch (error) {
-                        toast({ title: "Error", description: "No se pudo descargar el alta", variant: "destructive" })
-                      }
-                    }}
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Alta Médica
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full mt-2"
-                  onClick={() => {
-                    setMostrarBotonesPDF(false)
-                    setDiagnosticoGuardado(null)
-                    setModalDiagnosticoOpen(false)
-                    setFichaSeleccionada(null)
-                  }}
-                >
-                  Cerrar
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-        
         {error && (
           <Alert className="mb-6 bg-red-500/10 border-red-500/30 text-red-500">
             <AlertDescription>{error}</AlertDescription>
@@ -440,7 +463,7 @@ export default function MedicoDashboard() {
                 <Badge className="ml-2 bg-amber-500 text-white">{solicitudesPendientes.length}</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="diagnosticos">Diagnósticos</TabsTrigger>
+            <TabsTrigger value="atendidos">Pacientes Atendidos</TabsTrigger>
           </TabsList>
 
           {/* Casos Activos */}
@@ -629,35 +652,97 @@ export default function MedicoDashboard() {
                       </div>
                     )}
 
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1 bg-blue-600 hover:bg-blue-700"
-                        onClick={() => handleAbrirDiagnostico(ficha)}
-                      >
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                        Realizar Diagnóstico
-                      </Button>
-                      <Button 
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
-                        onClick={() => handleAbrirExamenes(ficha)}
-                      >
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                          />
-                        </svg>
-                        Solicitar Exámenes
-                      </Button>
+                    {/* Exámenes Solicitados */}
+                    {ficha.solicitudesExamenes && ficha.solicitudesExamenes.length > 0 && (
+                      <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-2">🧪 Exámenes Solicitados</h4>
+                        <div className="space-y-2">
+                          {ficha.solicitudesExamenes.map((examen: any) => (
+                            <div key={examen.id} className="p-2 bg-slate-800/50 rounded">
+                              <div className="flex items-start justify-between mb-1">
+                                <p className="text-sm font-medium text-white">{examen.tipoExamen}</p>
+                                <Badge className={
+                                  examen.estado === 'pendiente' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
+                                  examen.estado === 'en_proceso' ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' :
+                                  examen.estado === 'realizado' ? 'bg-green-500/20 text-green-500 border-green-500/30' :
+                                  'bg-red-500/20 text-red-500 border-red-500/30'
+                                }>
+                                  {examen.estado === 'pendiente' ? '⏳ Pendiente' :
+                                   examen.estado === 'en_proceso' ? '🔬 En Proceso' :
+                                   examen.estado === 'realizado' ? '✅ Realizado' : '❌ Rechazado'}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-slate-400">{examen.examenesEspecificos}</p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Solicitado: {new Date(examen.fechaSolicitud).toLocaleString('es-CL')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={() => handleAbrirDiagnostico(ficha)}
+                        >
+                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                          Realizar Diagnóstico
+                        </Button>
+                        <Button 
+                          className="bg-purple-600 hover:bg-purple-700 text-white"
+                          onClick={() => handleAbrirExamenes(ficha)}
+                        >
+                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                            />
+                          </svg>
+                          Solicitar Exámenes
+                        </Button>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => router.push(`/dashboard/medico/documentos/${ficha.id}`)}
+                        >
+                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                          Ver Ficha y Documentos
+                        </Button>
+                        <Button
+                          className="bg-teal-600 hover:bg-teal-700 text-white"
+                          onClick={() => abrirModalCamas(ficha)}
+                        >
+                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M3 12h18M3 12l4-4m-4 4l4 4m10-4l-4-4m4 4l-4 4"
+                            />
+                          </svg>
+                          🛏️ Asignar Cama
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -755,112 +840,341 @@ export default function MedicoDashboard() {
             </Card>
           </TabsContent>
 
-          {/* Diagnósticos */}
-          <TabsContent value="diagnosticos" className="space-y-6">
+          {/* Diagnóstico - Página completa */}
+          <TabsContent value="diagnostico" className="space-y-6">
             {fichaSeleccionada ? (
-              <Card className="border-slate-800 bg-slate-900/50">
-                <CardHeader>
-                  <CardTitle className="text-white">
-                    Diagnóstico y Alta Médica - {fichaSeleccionada.paciente.nombres}{" "}
-                    {fichaSeleccionada.paciente.apellidos}
-                  </CardTitle>
-                  <CardDescription className="text-slate-400">
-                    Complete el diagnóstico e indicaciones médicas
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="diagnostico" className="text-slate-300">
-                      Diagnóstico CIE-10
-                    </Label>
-                    <Textarea
-                      id="diagnostico"
-                      placeholder="Ej: I21.9 - Infarto agudo del miocardio"
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
+              <div className="space-y-6">
+                {/* Resumen del Paciente */}
+                <Card className="border-slate-800 bg-slate-900/50">
+                  <CardHeader>
+                    <CardTitle className="text-white text-2xl">
+                      {fichaSeleccionada.paciente.esNN 
+                        ? `Paciente NN (${fichaSeleccionada.paciente.idTemporal})`
+                        : `${fichaSeleccionada.paciente.nombres} ${fichaSeleccionada.paciente.apellidos}`
+                      }
+                    </CardTitle>
+                    <CardDescription className="text-slate-400">
+                      Ficha #{fichaSeleccionada.id} • {fichaSeleccionada.motivoConsulta}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {fichaSeleccionada.signosVitales && fichaSeleccionada.signosVitales.length > 0 && (
+                        <>
+                          <div className="p-3 bg-slate-800/50 rounded-lg">
+                            <p className="text-xs text-slate-400">PA</p>
+                            <p className="text-lg font-semibold text-white">
+                              {fichaSeleccionada.signosVitales[0].presionSistolica}/
+                              {fichaSeleccionada.signosVitales[0].presionDiastolica}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-slate-800/50 rounded-lg">
+                            <p className="text-xs text-slate-400">FC</p>
+                            <p className="text-lg font-semibold text-white">
+                              {fichaSeleccionada.signosVitales[0].frecuenciaCardiaca} lpm
+                            </p>
+                          </div>
+                          <div className="p-3 bg-slate-800/50 rounded-lg">
+                            <p className="text-xs text-slate-400">SatO₂</p>
+                            <p className="text-lg font-semibold text-white">
+                              {fichaSeleccionada.signosVitales[0].saturacionO2}%
+                            </p>
+                          </div>
+                          <div className="p-3 bg-slate-800/50 rounded-lg">
+                            <p className="text-xs text-slate-400">Temp</p>
+                            <p className="text-lg font-semibold text-white">
+                              {fichaSeleccionada.signosVitales[0].temperatura}°C
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    
+                    {fichaSeleccionada.anamnesis?.alergiasCriticas && (
+                      <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                        <p className="text-sm font-semibold text-red-500">⚠️ ALERGIAS MEDICAMENTOSAS:</p>
+                        <p className="text-sm text-red-400">
+                          {fichaSeleccionada.anamnesis.alergiasMedicamentosas.join(", ")}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="descripcion" className="text-slate-300">
-                      Descripción del Diagnóstico
-                    </Label>
-                    <Textarea
-                      id="descripcion"
-                      placeholder="Descripción detallada del diagnóstico..."
-                      className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
-                    />
-                  </div>
+                {!diagnosticoGuardado ? (
+                  /* Formulario de Diagnóstico */
+                  <Card className="border-slate-800 bg-slate-900/50">
+                    <CardHeader>
+                      <CardTitle className="text-white">Diagnóstico y Alta Médica</CardTitle>
+                      <CardDescription className="text-slate-400">
+                        Complete el diagnóstico e indicaciones médicas
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">
+                          Código CIE-10 <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          placeholder="Ej: I21.9"
+                          value={diagnosticoForm.codigoCIE10}
+                          onChange={(e) => setDiagnosticoForm({...diagnosticoForm, codigoCIE10: e.target.value})}
+                          className="bg-slate-800 border-slate-700 text-white"
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="indicaciones" className="text-slate-300">
-                      Indicaciones Médicas
-                    </Label>
-                    <Textarea
-                      id="indicaciones"
-                      placeholder="Indicaciones y tratamiento..."
-                      className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">
+                          Diagnóstico <span className="text-red-500">*</span>
+                        </Label>
+                        <Textarea
+                          placeholder="Ej: Infarto agudo del miocardio"
+                          value={diagnosticoForm.diagnostico}
+                          onChange={(e) => setDiagnosticoForm({...diagnosticoForm, diagnostico: e.target.value})}
+                          className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="medicamentos" className="text-slate-300">
-                      Medicamentos Prescritos
-                    </Label>
-                    <Textarea
-                      id="medicamentos"
-                      placeholder="Lista de medicamentos con dosis y frecuencia..."
-                      className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">
+                          Indicaciones Médicas <span className="text-red-500">*</span>
+                        </Label>
+                        <Textarea
+                          placeholder="Indicaciones y tratamiento..."
+                          value={diagnosticoForm.indicaciones}
+                          onChange={(e) => setDiagnosticoForm({...diagnosticoForm, indicaciones: e.target.value})}
+                          className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
+                        />
+                      </div>
 
-                  <div className="flex gap-2 pt-4">
-                    <Button className="flex-1 bg-blue-600 hover:bg-blue-700">Guardar Diagnóstico y Dar Alta</Button>
-                    <Button
-                      variant="outline"
-                      className="border-slate-700 bg-transparent"
-                      onClick={() => setFichaSeleccionada(null)}
-                    >
-                      Cancelar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">Medicamentos Prescritos</Label>
+                        <Textarea
+                          placeholder="Aspirina 100mg cada 24 horas&#10;Enalapril 10mg cada 12 horas..."
+                          value={diagnosticoForm.medicamentos}
+                          onChange={(e) => setDiagnosticoForm({...diagnosticoForm, medicamentos: e.target.value})}
+                          className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">
+                          Tipo de Alta <span className="text-red-500">*</span>
+                        </Label>
+                        <Select 
+                          value={diagnosticoForm.tipoAlta} 
+                          onValueChange={(value) => setDiagnosticoForm({...diagnosticoForm, tipoAlta: value})}
+                        >
+                          <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                            <SelectValue placeholder="Seleccionar tipo de alta" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="domicilio">Alta a Domicilio</SelectItem>
+                            <SelectItem value="hospitalizacion">Hospitalización</SelectItem>
+                            <SelectItem value="derivacion">Derivación a Especialista</SelectItem>
+                            <SelectItem value="uci">Ingreso a UCI</SelectItem>
+                            <SelectItem value="fallecido">Fallecido</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex gap-2 pt-4">
+                        <Button 
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={handleGuardarDiagnostico}
+                          disabled={loading}
+                        >
+                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Guardar Diagnóstico
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="border-slate-700"
+                          onClick={() => {
+                            setFichaSeleccionada(null)
+                            setActiveTab("casos")
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  /* Botones de Descarga PDF */
+                  <Card className="border-slate-800 bg-slate-900/50">
+                    <CardHeader>
+                      <CardTitle className="text-white">📄 Documentos Disponibles</CardTitle>
+                      <CardDescription className="text-slate-400">
+                        Descargue los documentos necesarios para el paciente
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4">
+                        <Button
+                          className="bg-purple-600 hover:bg-purple-700 h-20"
+                          onClick={async () => {
+                            try {
+                              await documentosAPI.descargarFichaPDF(fichaSeleccionada.id)
+                              toast({ title: "PDF descargado", description: "Ficha completa descargada" })
+                            } catch (error) {
+                              toast({ title: "Error", description: "No se pudo descargar la ficha", variant: "destructive" })
+                            }
+                          }}
+                        >
+                          <div className="text-center">
+                            <svg className="w-6 h-6 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span className="text-sm font-semibold">Ficha Completa</span>
+                          </div>
+                        </Button>
+                        
+                        <Button
+                          className="bg-green-600 hover:bg-green-700 h-20"
+                          onClick={() => {
+                            router.push(`/dashboard/medico/receta/${fichaSeleccionada.id}`)
+                          }}
+                        >
+                          <div className="text-center">
+                            <svg className="w-6 h-6 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            <span className="text-sm font-semibold">Receta Médica</span>
+                          </div>
+                        </Button>
+                        
+                        <Button
+                          className="bg-indigo-600 hover:bg-indigo-700 h-20"
+                          onClick={async () => {
+                            try {
+                              await documentosAPI.descargarOrdenExamenesPDF(fichaSeleccionada.id)
+                              toast({ title: "PDF descargado", description: "Orden de exámenes descargada" })
+                            } catch (error) {
+                              toast({ title: "Error", description: "No se pudo descargar la orden", variant: "destructive" })
+                            }
+                          }}
+                        >
+                          <div className="text-center">
+                            <svg className="w-6 h-6 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                            <span className="text-sm font-semibold">Orden de Exámenes</span>
+                          </div>
+                        </Button>
+                        
+                        <Button
+                          className="bg-teal-600 hover:bg-teal-700 h-20"
+                          onClick={async () => {
+                            try {
+                              await documentosAPI.descargarAltaPDF(fichaSeleccionada.id)
+                              toast({ title: "PDF descargado", description: "Alta médica descargada" })
+                            } catch (error) {
+                              toast({ title: "Error", description: "No se pudo descargar el alta", variant: "destructive" })
+                            }
+                          }}
+                        >
+                          <div className="text-center">
+                            <svg className="w-6 h-6 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="text-sm font-semibold">Alta Médica</span>
+                          </div>
+                        </Button>
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        className="w-full mt-4 border-slate-700"
+                        onClick={() => {
+                          setFichaSeleccionada(null)
+                          setDiagnosticoGuardado(false)
+                          setActiveTab("casos")
+                        }}
+                      >
+                        Volver a Casos Activos
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             ) : (
               <Card className="border-slate-800 bg-slate-900/50">
                 <CardContent className="py-12">
                   <div className="text-center">
-                    <svg
-                      className="w-16 h-16 text-slate-600 mx-auto mb-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
+                    <svg className="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <p className="text-slate-400 mb-4">Selecciona un caso activo para realizar el diagnóstico</p>
-                    <Button onClick={() => setActiveTab("casos")}>
-                      Ver Casos Activos
-                    </Button>
+                    <p className="text-slate-400 mb-4">Seleccione un caso activo para realizar el diagnóstico</p>
+                    <Button onClick={() => setActiveTab("casos")}>Ver Casos Activos</Button>
                   </div>
                 </CardContent>
               </Card>
             )}
           </TabsContent>
+
+          {/* Pacientes Atendidos */}
+          <TabsContent value="atendidos" className="space-y-6">
+            <Card className="border-slate-800 bg-slate-900/50">
+              <CardHeader>
+                <CardTitle className="text-white">Pacientes Atendidos</CardTitle>
+                <CardDescription className="text-slate-400">
+                  Pacientes con diagnóstico completado - Acceda a sus fichas y documentos
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {fichasAtendidas.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-slate-400">No hay pacientes atendidos aún</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {fichasAtendidas.map((ficha) => (
+                      <div key={ficha.id} className="p-4 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-white text-lg">
+                              {ficha.paciente.esNN 
+                                ? `Paciente NN (${ficha.paciente.idTemporal})`
+                                : `${ficha.paciente.nombres} ${ficha.paciente.apellidos}`
+                              }
+                            </h4>
+                            <p className="text-sm text-slate-400 mt-1">
+                              Ficha #{ficha.id} • {new Date(ficha.fechaRegistro).toLocaleString('es-CL')}
+                            </p>
+                            {ficha.diagnostico && (
+                              <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                                <p className="text-sm text-blue-300">
+                                  <strong>Diagnóstico:</strong> {ficha.diagnostico.diagnostico_cie10}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => router.push(`/dashboard/medico/documentos/${ficha.id}`)}
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Ver Documentos y PDFs
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </main>
-
-      {/* Modal de diagnóstico */}
-      <ModalDiagnostico
-        open={modalDiagnosticoOpen}
-        onOpenChange={setModalDiagnosticoOpen}
-        ficha={fichaSeleccionada}
-        onConfirm={handleConfirmDiagnostico}
-      />
 
       {/* Modal de solicitud de exámenes */}
       <ModalExamenes
@@ -874,6 +1188,95 @@ export default function MedicoDashboard() {
         open={modalBuscarOpen} 
         onOpenChange={setModalBuscarOpen} 
       />
+
+      {/* Modal Asignación de Camas */}
+      <Dialog open={modalCamasOpen} onOpenChange={setModalCamasOpen}>
+        <DialogContent className="max-w-3xl bg-slate-900 border-slate-800" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              🛏️ Asignar Cama - {fichaParaCama && (fichaParaCama.paciente.esNN 
+                ? `Paciente NN (${fichaParaCama.paciente.idTemporal})`
+                : `${fichaParaCama.paciente.nombres} ${fichaParaCama.paciente.apellidos}`)}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Seleccione una cama disponible para asignar al paciente
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Filtro por tipo de cama */}
+          <div className="mb-4">
+            <Label htmlFor="tipoCamaFiltro" className="text-slate-300 mb-2 block">
+              Filtrar por tipo de cama
+            </Label>
+            <Select
+              value={tipoCamaFiltro}
+              onValueChange={async (value) => {
+                setTipoCamaFiltro(value)
+                await cargarCamasDisponibles(value !== 'all' ? value : undefined)
+              }}
+            >
+              <SelectTrigger className="bg-slate-800 text-white border-slate-700">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all" className="text-white">Todas las camas</SelectItem>
+                <SelectItem value="general" className="text-white">🛏️ Camas Generales</SelectItem>
+                <SelectItem value="uci" className="text-white">🏥 Camas UCI</SelectItem>
+                <SelectItem value="emergencia" className="text-white">🚨 Salas de Emergencia</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Lista de camas disponibles */}
+          <div className="max-h-96 overflow-y-auto space-y-2">
+            {camasDisponibles.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400">No hay camas disponibles del tipo seleccionado</p>
+              </div>
+            ) : (
+              camasDisponibles.map((cama: any) => (
+                <Card
+                  key={cama.id}
+                  className="border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors"
+                  onClick={() => handleAsignarCama(cama.id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg font-bold text-white">{cama.numero}</span>
+                          <Badge variant="outline" className="border-blue-500 text-blue-400">
+                            {cama.tipo === 'general' ? '🛏️ General' :
+                             cama.tipo === 'uci' ? '🏥 UCI' : '🚨 Emergencia'}
+                          </Badge>
+                          <Badge variant="outline" className="border-green-500 text-green-400">
+                            ✅ Disponible
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-slate-400 space-y-1">
+                          {cama.sala && <p>📍 Sala: {cama.sala}</p>}
+                          {cama.piso && <p>🏢 Piso: {cama.piso}</p>}
+                          {cama.descripcion && <p>{cama.descripcion}</p>}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="bg-teal-600 hover:bg-teal-700"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleAsignarCama(cama.id)
+                        }}
+                      >
+                        Asignar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

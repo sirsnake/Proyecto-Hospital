@@ -1,3 +1,4 @@
+{% load custom_filters %}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,7 +7,7 @@
     <style>
         @page {
             size: letter;
-            margin: 2cm;
+            margin: 2cm 1.5cm;
         }
         * {
             margin: 0;
@@ -14,178 +15,424 @@
             box-sizing: border-box;
         }
         body {
-            font-family: 'Arial', sans-serif;
-            font-size: 11pt;
-            line-height: 1.5;
-            color: #333;
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #000;
         }
+        
+        /* HEADER */
         .header {
-            border: 3px solid #10b981;
-            padding: 20px;
-            margin-bottom: 30px;
-            background-color: #f0fdf4;
-        }
-        .header h1 {
-            color: #10b981;
-            font-size: 24pt;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .header .hospital-info {
-            text-align: center;
-            color: #666;
-            font-size: 10pt;
-            margin-bottom: 15px;
-        }
-        .medico-info {
-            background-color: #fff;
-            padding: 15px;
-            border-left: 4px solid #10b981;
+            border-bottom: 3px solid #16a34a;
+            padding-bottom: 15px;
             margin-bottom: 20px;
         }
-        .medico-info p {
-            margin: 5px 0;
-            font-size: 10pt;
+        .header-top {
+            display: table;
+            width: 100%;
+            margin-bottom: 10px;
         }
-        .section {
-            margin-bottom: 25px;
+        .header-left {
+            display: table-cell;
+            width: 70%;
+            vertical-align: top;
         }
-        .section-title {
-            background-color: #10b981;
-            color: white;
-            padding: 10px 15px;
-            font-size: 13pt;
+        .header-right {
+            display: table-cell;
+            width: 30%;
+            vertical-align: top;
+            text-align: right;
+        }
+        .hospital-name {
+            font-size: 16pt;
             font-weight: bold;
-            margin-bottom: 15px;
+            color: #16a34a;
+            margin-bottom: 3px;
         }
-        .patient-box {
-            border: 2px solid #d1d5db;
-            padding: 15px;
-            background-color: #f9fafb;
+        .department {
+            font-size: 11pt;
+            color: #475569;
+            font-weight: 600;
+        }
+        .hospital-address {
+            font-size: 8pt;
+            color: #64748b;
+            margin-top: 5px;
+        }
+        .rx-symbol {
+            font-size: 48pt;
+            color: #16a34a;
+            font-weight: bold;
+            line-height: 1;
+        }
+        
+        /* MÉDICO BOX */
+        .medico-box {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-left: 4px solid #16a34a;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 3px;
+        }
+        .medico-box p {
+            margin: 4px 0;
+            font-size: 9.5pt;
+            color: #1e293b;
+        }
+        .medico-box strong {
+            color: #15803d;
+        }
+        
+        /* TÍTULO DOCUMENTO */
+        .document-title {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #16a34a;
+            text-align: center;
+            margin: 15px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .document-info {
+            text-align: center;
+            font-size: 9pt;
+            color: #64748b;
             margin-bottom: 20px;
         }
-        .patient-box p {
-            margin: 5px 0;
+        
+        /* SECCIONES */
+        .section {
+            margin-bottom: 18px;
+            page-break-inside: avoid;
         }
-        .patient-box strong {
-            color: #374151;
+        .section-header {
+            background: #f1f5f9;
+            border-left: 4px solid #16a34a;
+            padding: 8px 12px;
+            font-size: 11pt;
+            font-weight: bold;
+            color: #1e293b;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .prescription-box {
-            border: 2px solid #10b981;
-            padding: 20px;
-            min-height: 200px;
-            background-color: white;
-            margin-bottom: 20px;
-        }
-        .prescription-box h3 {
-            color: #10b981;
-            margin-bottom: 15px;
-            font-size: 14pt;
-        }
-        .prescription-text {
-            white-space: pre-wrap;
-            line-height: 1.8;
-            font-size: 12pt;
-        }
-        .indicaciones-box {
-            background-color: #fef3c7;
-            border: 2px solid #f59e0b;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-        .indicaciones-box h3 {
-            color: #92400e;
+        
+        /* TABLA DE DATOS */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
             margin-bottom: 10px;
         }
+        .data-table td {
+            padding: 6px 10px;
+            border: 1px solid #e2e8f0;
+            font-size: 9.5pt;
+        }
+        .data-table td.label {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #475569;
+            width: 30%;
+        }
+        .data-table td.value {
+            background: #fff;
+            color: #0f172a;
+        }
+        
+        /* DIAGNÓSTICO BOX */
+        .diagnosis-box {
+            background: #eff6ff;
+            border: 1px solid #93c5fd;
+            padding: 12px;
+            border-radius: 3px;
+            margin-bottom: 20px;
+        }
+        .diagnosis-box strong {
+            color: #1e40af;
+            font-size: 10pt;
+        }
+        .diagnosis-box p {
+            margin-top: 6px;
+            font-size: 9.5pt;
+            color: #475569;
+        }
+        
+        /* CAJA DE PRESCRIPCIÓN */
+        .prescription-container {
+            background: #fff;
+            border: 2px solid #16a34a;
+            padding: 20px;
+            min-height: 250px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .prescription-title {
+            font-size: 14pt;
+            font-weight: bold;
+            color: #15803d;
+            margin-bottom: 15px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* MEDICAMENTO ITEM */
+        .medicamento-item {
+            background: #f8fafc;
+            border-left: 3px solid #16a34a;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 3px;
+        }
+        .medicamento-item h4 {
+            color: #15803d;
+            font-size: 11pt;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+        .medicamento-item p {
+            margin: 3px 0;
+            font-size: 9pt;
+            color: #475569;
+        }
+        .medicamento-item .label {
+            font-weight: 600;
+            color: #16a34a;
+        }
+        
+        /* INDICACIONES GENERALES */
+        .indicaciones-box {
+            background: #fefce8;
+            border: 1px solid #fde047;
+            border-left: 4px solid #eab308;
+            padding: 12px;
+            border-radius: 3px;
+            margin-top: 15px;
+        }
+        .indicaciones-box h4 {
+            color: #854d0e;
+            font-size: 10pt;
+            margin-bottom: 8px;
+        }
+        .indicaciones-box p {
+            font-size: 9.5pt;
+            color: #1e293b;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        
+        /* ADVERTENCIA */
+        .warning-box {
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            padding: 10px;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+        .warning-box p {
+            font-size: 8pt;
+            color: #78350f;
+            text-align: center;
+        }
+        
+        /* FIRMA */
         .signature-section {
-            margin-top: 60px;
+            margin-top: 50px;
             text-align: center;
         }
         .signature-line {
-            border-top: 2px solid #333;
+            border-top: 2px solid #1e293b;
             width: 300px;
-            margin: 40px auto 10px;
+            margin: 0 auto 10px;
         }
+        .signature-section p {
+            font-size: 9pt;
+            color: #1e293b;
+            margin: 3px 0;
+        }
+        
+        /* FOOTER */
         .footer {
             position: fixed;
             bottom: 1cm;
-            left: 2cm;
-            right: 2cm;
+            left: 1.5cm;
+            right: 1.5cm;
             text-align: center;
-            font-size: 9pt;
-            color: #6b7280;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 10px;
-        }
-        .rx-symbol {
-            font-size: 36pt;
-            color: #10b981;
-            font-weight: bold;
-            margin-bottom: 10px;
+            font-size: 7pt;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
         }
     </style>
 </head>
 <body>
+    <!-- HEADER -->
     <div class="header">
-        <h1>℞ RECETA MÉDICA</h1>
-        <div class="hospital-info">
-            <p><strong>Hospital General - Servicio de Urgencias</strong></p>
-            <p>Dirección: Av. Principal 1234, Santiago, Chile</p>
-            <p>Teléfono: +56 2 2345 6789</p>
-        </div>
-        <div class="medico-info">
-            <p><strong>Dr(a).: {{ medico.nombre }}</strong></p>
-            <p><strong>RUT:</strong> {{ medico.rut }}</p>
-            <p><strong>Especialidad:</strong> Medicina de Urgencia</p>
-            <p><strong>Fecha:</strong> {{ diagnostico.fecha|date:"d/m/Y" }}</p>
+        <div class="header-top">
+            <div class="header-left">
+                <div class="hospital-name">Hospital General</div>
+                <div class="department">Servicio de Urgencias</div>
+                <div class="hospital-address">Av. Principal 1234, Santiago, Chile | Tel: +56 2 2345 6789</div>
+            </div>
+            <div class="header-right">
+                <div class="rx-symbol">℞</div>
+            </div>
         </div>
     </div>
-
+    
+    <div class="document-title">Receta Médica</div>
+    <div class="document-info">Fecha de Emisión: {{ fecha_actual }}</div>
+    
+    <!-- MÉDICO PRESCRIPTOR -->
+    <div class="medico-box">
+        <p><strong>Médico Prescriptor:</strong> Dr(a). {{ medico.nombre }}</p>
+        <p><strong>RUT:</strong> {{ medico.rut }}</p>
+        {% if medico.especialidad %}
+        <p><strong>Especialidad:</strong> {{ medico.especialidad }}</p>
+        {% endif %}
+        {% if medico.registro_profesional %}
+        <p><strong>Registro Profesional:</strong> {{ medico.registro_profesional }}</p>
+        {% endif %}
+    </div>
+    
+    <!-- DATOS DEL PACIENTE -->
     <div class="section">
-        <div class="section-title">DATOS DEL PACIENTE</div>
-        <div class="patient-box">
-            <p><strong>Nombre:</strong> {{ paciente.nombre }}</p>
-            <p><strong>RUT:</strong> {{ paciente.rut|default:"Sin RUT registrado" }}</p>
-            <p><strong>Edad:</strong> {{ paciente.edad }} años</p>
-            <p><strong>Previsión:</strong> {{ paciente.prevision|default:"No especificada" }}</p>
-            <p><strong>N° Ficha:</strong> {{ ficha.id }}</p>
-        </div>
+        <div class="section-header">Datos del Paciente</div>
+        <table class="data-table">
+            <tr>
+                <td class="label">Nombre Completo:</td>
+                <td class="value">
+                    {% if paciente %}
+                        {{ paciente.nombre }}
+                    {% else %}
+                        PACIENTE NN
+                    {% endif %}
+                </td>
+                <td class="label">RUT:</td>
+                <td class="value">
+                    {% if paciente and paciente.rut %}
+                        {{ paciente.rut }}
+                    {% else %}
+                        Sin RUT
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Edad:</td>
+                <td class="value">
+                    {% if paciente %}
+                        {{ paciente.edad }} años
+                    {% else %}
+                        Desconocida
+                    {% endif %}
+                </td>
+                <td class="label">Sexo:</td>
+                <td class="value">
+                    {% if paciente %}
+                        {{ paciente.get_sexo_display }}
+                    {% else %}
+                        No especificado
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Previsión:</td>
+                <td class="value">
+                    {% if paciente and paciente.prevision %}
+                        {{ paciente.prevision }}
+                    {% else %}
+                        No especificada
+                    {% endif %}
+                </td>
+                <td class="label">N° Ficha:</td>
+                <td class="value">{{ ficha.id }}</td>
+            </tr>
+        </table>
     </div>
-
+    
+    <!-- DIAGNÓSTICO -->
     <div class="section">
-        <div class="section-title">DIAGNÓSTICO</div>
-        <div class="patient-box">
-            <p style="font-size: 12pt;"><strong>{{ diagnostico.diagnostico }}</strong></p>
+        <div class="section-header">Diagnóstico</div>
+        <div class="diagnosis-box">
+            <strong>{{ diagnostico.diagnostico_cie10 }}</strong>
+            {% if diagnostico.descripcion %}
+            <p>{{ diagnostico.descripcion }}</p>
+            {% endif %}
         </div>
     </div>
-
+    
+    <!-- PRESCRIPCIÓN -->
     <div class="section">
-        <div class="prescription-box">
-            <div class="rx-symbol">℞</div>
-            <h3>TRATAMIENTO PRESCRITO:</h3>
-            <div class="prescription-text">{{ diagnostico.tratamiento|default:"No se especificó tratamiento farmacológico" }}</div>
+        <div class="prescription-container">
+            <div class="prescription-title">℞ Medicamentos Prescritos</div>
+            
+            {% if diagnostico.medicamentos_prescritos %}
+                {% with medicamentos=diagnostico.medicamentos_prescritos|parse_json %}
+                    {% if medicamentos %}
+                        {% for medicamento in medicamentos %}
+                        <div class="medicamento-item">
+                            <h4>{{ forloop.counter }}. {{ medicamento.nombre }}</h4>
+                            {% if medicamento.dosis %}
+                            <p><span class="label">Dosis:</span> {{ medicamento.dosis }}</p>
+                            {% endif %}
+                            {% if medicamento.frecuencia %}
+                            <p><span class="label">Frecuencia:</span> {{ medicamento.frecuencia }}</p>
+                            {% endif %}
+                            {% if medicamento.duracion %}
+                            <p><span class="label">Duración:</span> {{ medicamento.duracion }}</p>
+                            {% endif %}
+                            {% if medicamento.indicaciones %}
+                            <p><span class="label">Indicaciones:</span> {{ medicamento.indicaciones }}</p>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p style="text-align: center; color: #64748b; font-style: italic; padding: 20px;">
+                            No hay medicamentos prescritos
+                        </p>
+                    {% endif %}
+                {% endwith %}
+            {% else %}
+                <p style="text-align: center; color: #64748b; font-style: italic; padding: 20px;">
+                    No hay medicamentos prescritos
+                </p>
+            {% endif %}
         </div>
     </div>
-
-    {% if diagnostico.indicaciones %}
+    
+    <!-- INDICACIONES GENERALES -->
+    {% if diagnostico.indicaciones_medicas %}
     <div class="section">
         <div class="indicaciones-box">
-            <h3>⚠️ INDICACIONES MÉDICAS:</h3>
-            <div style="white-space: pre-wrap; line-height: 1.6;">{{ diagnostico.indicaciones }}</div>
+            <h4>Indicaciones Generales</h4>
+            <p>{{ diagnostico.indicaciones_medicas }}</p>
         </div>
     </div>
     {% endif %}
-
+    
+    <!-- ADVERTENCIAS -->
+    <div class="warning-box">
+        <p><strong>IMPORTANTE:</strong> No automedicarse. Seguir estrictamente las indicaciones médicas. 
+        Consultar ante cualquier reacción adversa.</p>
+    </div>
+    
+    <!-- FIRMA -->
     <div class="signature-section">
         <div class="signature-line"></div>
-        <p><strong>{{ medico.nombre }}</strong></p>
+        <p><strong>Dr(a). {{ medico.nombre }}</strong></p>
         <p>RUT: {{ medico.rut }}</p>
-        <p>Médico Cirujano</p>
+        {% if medico.especialidad %}
+        <p>{{ medico.especialidad }}</p>
+        {% endif %}
+        {% if medico.registro_profesional %}
+        <p>Registro: {{ medico.registro_profesional }}</p>
+        {% endif %}
     </div>
-
+    
+    <!-- FOOTER -->
     <div class="footer">
-        <p><strong>Receta válida por 30 días desde la fecha de emisión</strong></p>
-        <p>Este documento es confidencial y solo debe ser usado para fines médicos</p>
+        <p>Hospital General - Servicio de Urgencias | Receta médica oficial</p>
         <p>Generado el {{ fecha_actual }}</p>
     </div>
 </body>

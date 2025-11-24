@@ -16,6 +16,10 @@ class Usuario(AbstractUser):
     rol = models.CharField(max_length=20, choices=ROL_CHOICES)
     telefono = models.CharField(max_length=15, blank=True, null=True)
     
+    # Campos profesionales adicionales
+    especialidad = models.CharField(max_length=100, blank=True, null=True, help_text="Especialidad médica o profesional")
+    registro_profesional = models.CharField(max_length=50, blank=True, null=True, help_text="Número de registro profesional")
+    
     class Meta:
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'
@@ -236,3 +240,122 @@ class SolicitudExamen(models.Model):
     
     def __str__(self):
         return f"{self.tipo_examen} - Ficha #{self.ficha.id} ({self.estado})"
+
+
+class ConfiguracionHospital(models.Model):
+    """Configuración general del hospital"""
+    camas_totales = models.IntegerField(default=50, validators=[MinValueValidator(1)])
+    camas_uci = models.IntegerField(default=10, validators=[MinValueValidator(0)])
+    salas_emergencia = models.IntegerField(default=5, validators=[MinValueValidator(1)])
+    boxes_atencion = models.IntegerField(default=15, validators=[MinValueValidator(1)])
+    actualizado_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Configuración del Hospital'
+        verbose_name_plural = 'Configuraciones del Hospital'
+    
+    def __str__(self):
+        return f"Configuración Hospital - Actualizado {self.fecha_actualizacion.strftime('%d/%m/%Y %H:%M')}"
+    
+    @classmethod
+    def get_configuracion(cls):
+        """Obtiene o crea la configuración del hospital"""
+        config, created = cls.objects.get_or_create(pk=1)
+        return config
+
+
+class Cama(models.Model):
+    """Modelo para gestión de camas del hospital"""
+    TIPO_CHOICES = [
+        ('general', 'General'),
+        ('uci', 'UCI'),
+        ('emergencia', 'Emergencia'),
+    ]
+    
+    ESTADO_CHOICES = [
+        ('disponible', 'Disponible'),
+        ('ocupada', 'Ocupada'),
+        ('mantenimiento', 'Mantenimiento'),
+        ('limpieza', 'En Limpieza'),
+    ]
+    
+    numero = models.CharField(max_length=20, unique=True, help_text="Número o código de la cama")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='general')
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='disponible')
+    piso = models.IntegerField(validators=[MinValueValidator(1)], blank=True, null=True)
+    sala = models.CharField(max_length=50, blank=True, null=True)
+    
+    # Asignación actual
+    ficha_actual = models.OneToOneField('FichaEmergencia', on_delete=models.SET_NULL, null=True, blank=True, related_name='cama_asignada')
+    fecha_asignacion = models.DateTimeField(blank=True, null=True)
+    asignado_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='camas_asignadas')
+    
+    observaciones = models.TextField(blank=True, null=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Cama'
+        verbose_name_plural = 'Camas'
+        ordering = ['tipo', 'numero']
+        indexes = [
+            models.Index(fields=['estado', 'tipo']),
+            models.Index(fields=['numero']),
+        ]
+    
+    def __str__(self):
+        return f"Cama {self.numero} ({self.get_tipo_display()}) - {self.get_estado_display()}"
+    
+    def liberar(self):
+        """Libera la cama para nuevo uso"""
+        self.estado = 'disponible'
+        self.ficha_actual = None
+        self.fecha_asignacion = None
+        self.asignado_por = None
+        self.save()
+    
+    def asignar(self, ficha, usuario):
+        """Asigna la cama a una ficha"""
+        from django.utils import timezone
+        self.estado = 'ocupada'
+        self.ficha_actual = ficha
+        self.fecha_asignacion = timezone.now()
+        self.asignado_por = usuario
+        self.save()
+
+
+class AuditLog(models.Model):
+    """Registro de auditoría para todas las acciones del sistema"""
+    ACCION_CHOICES = [
+        ('crear', 'Crear'),
+        ('editar', 'Editar'),
+        ('eliminar', 'Eliminar'),
+        ('autorizar', 'Autorizar'),
+        ('rechazar', 'Rechazar'),
+        ('login', 'Inicio de Sesión'),
+        ('logout', 'Cierre de Sesión'),
+    ]
+    
+    usuario = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='acciones_auditoria')
+    accion = models.CharField(max_length=20, choices=ACCION_CHOICES)
+    modelo = models.CharField(max_length=100, help_text="Modelo afectado (ej: FichaEmergencia, Usuario)")
+    objeto_id = models.IntegerField(blank=True, null=True, help_text="ID del objeto afectado")
+    detalles = models.JSONField(blank=True, null=True, help_text="Detalles adicionales de la acción")
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'Log de Auditoría'
+        verbose_name_plural = 'Logs de Auditoría'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp']),
+            models.Index(fields=['usuario', '-timestamp']),
+            models.Index(fields=['modelo', '-timestamp']),
+        ]
+    
+    def __str__(self):
+        usuario_str = self.usuario.get_full_name() if self.usuario else "Sistema"
+        return f"{usuario_str} - {self.get_accion_display()} - {self.modelo} #{self.objeto_id or 'N/A'} - {self.timestamp.strftime('%d/%m/%Y %H:%M')}"

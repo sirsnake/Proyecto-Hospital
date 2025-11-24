@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI, signosVitalesAPI } from "@/lib/api"
+import { authAPI, fichasAPI, signosVitalesAPI, camasAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -12,7 +12,9 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
+import { toast } from "@/hooks/use-toast"
 
 export default function TensDashboard() {
   const router = useRouter()
@@ -36,6 +38,12 @@ export default function TensDashboard() {
     escalaGlasgow: "",
     eva: ""
   })
+
+  // Estados para asignación de camas
+  const [camasDisponibles, setCamasDisponibles] = useState<any[]>([])
+  const [modalCamasOpen, setModalCamasOpen] = useState(false)
+  const [fichaParaCama, setFichaParaCama] = useState<any>(null)
+  const [tipoCamaFiltro, setTipoCamaFiltro] = useState('all')
 
   useEffect(() => {
     const currentUser = getSession()
@@ -82,6 +90,38 @@ export default function TensDashboard() {
       setFichasEnHospital([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const cargarCamasDisponibles = async (tipo?: string) => {
+    try {
+      const camas = await camasAPI.disponibles(tipo)
+      setCamasDisponibles(Array.isArray(camas) ? camas : [])
+    } catch (err: any) {
+      console.error('Error al cargar camas:', err)
+      toast({ title: "Error", description: "No se pudieron cargar las camas disponibles", variant: "destructive" })
+    }
+  }
+
+  const abrirModalCamas = async (ficha: any) => {
+    setFichaParaCama(ficha)
+    setModalCamasOpen(true)
+    await cargarCamasDisponibles()
+  }
+
+  const handleAsignarCama = async (camaId: number) => {
+    if (!fichaParaCama) return
+
+    try {
+      await camasAPI.asignar(camaId, fichaParaCama.id)
+      toast({ title: "✅ Cama asignada", description: `Cama asignada exitosamente al paciente` })
+      setModalCamasOpen(false)
+      setFichaParaCama(null)
+      setCamasDisponibles([])
+      await cargarFichas()
+    } catch (err: any) {
+      console.error('Error al asignar cama:', err)
+      toast({ title: "Error", description: err.message || "No se pudo asignar la cama", variant: "destructive" })
     }
   }
 
@@ -536,12 +576,12 @@ export default function TensDashboard() {
                                 <p className="text-xs font-semibold text-slate-400 mb-2">
                                   {index === 0 ? '📋 Signos Vitales - Paramédico' : `📊 Signos Vitales - TENS (Medición ${index})`}
                                   <span className="ml-2 text-slate-500">
-                                    {new Date(signos.fecha_registro).toLocaleString('es-CL', {
+                                    {signos.timestamp ? new Date(signos.timestamp).toLocaleString('es-CL', {
                                       day: '2-digit',
                                       month: '2-digit',
                                       hour: '2-digit',
                                       minute: '2-digit'
-                                    })}
+                                    }) : 'N/A'}
                                   </span>
                                 </p>
                                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
@@ -686,28 +726,46 @@ export default function TensDashboard() {
                                 />
                               </div>
                               <div>
-                                <Label className="text-slate-300 text-xs">Escala Glasgow (3-15)</Label>
-                                <Input
-                                  type="number"
-                                  min="3"
-                                  max="15"
-                                  placeholder="15"
+                                <Label className="text-slate-300 text-xs">Escala Glasgow</Label>
+                                <Select
                                   value={nuevosSignos.escalaGlasgow}
-                                  onChange={(e) => setNuevosSignos({...nuevosSignos, escalaGlasgow: e.target.value})}
-                                  className="bg-slate-800 border-slate-700 text-white"
-                                />
+                                  onValueChange={(value) => setNuevosSignos({...nuevosSignos, escalaGlasgow: value})}
+                                >
+                                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                                    <SelectValue placeholder="Seleccionar nivel de consciencia" />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-slate-800 border-slate-700">
+                                    <SelectItem value="15" className="text-white hover:bg-slate-700">15 - Consciente y orientado</SelectItem>
+                                    <SelectItem value="14" className="text-white hover:bg-slate-700">14 - Confuso</SelectItem>
+                                    <SelectItem value="13" className="text-white hover:bg-slate-700">13 - Respuesta verbal inapropiada</SelectItem>
+                                    <SelectItem value="8" className="text-white hover:bg-slate-700">8 - Semiconsciente</SelectItem>
+                                    <SelectItem value="3" className="text-white hover:bg-slate-700">3 - Inconsciente</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                               <div>
-                                <Label className="text-slate-300 text-xs">EVA (0-10)</Label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max="10"
-                                  placeholder="3"
+                                <Label className="text-slate-300 text-xs">EVA - Escala Visual Análoga del Dolor</Label>
+                                <Select
                                   value={nuevosSignos.eva}
-                                  onChange={(e) => setNuevosSignos({...nuevosSignos, eva: e.target.value})}
-                                  className="bg-slate-800 border-slate-700 text-white"
-                                />
+                                  onValueChange={(value) => setNuevosSignos({...nuevosSignos, eva: value})}
+                                >
+                                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                                    <SelectValue placeholder="Seleccionar nivel de dolor" />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-slate-800 border-slate-700">
+                                    <SelectItem value="0" className="text-white hover:bg-slate-700">0 - Sin dolor</SelectItem>
+                                    <SelectItem value="1" className="text-white hover:bg-slate-700">1/10 - Dolor leve</SelectItem>
+                                    <SelectItem value="2" className="text-white hover:bg-slate-700">2/10 - Dolor leve</SelectItem>
+                                    <SelectItem value="3" className="text-white hover:bg-slate-700">3/10 - Dolor leve</SelectItem>
+                                    <SelectItem value="4" className="text-white hover:bg-slate-700">4/10 - Dolor moderado</SelectItem>
+                                    <SelectItem value="5" className="text-white hover:bg-slate-700">5/10 - Dolor moderado</SelectItem>
+                                    <SelectItem value="6" className="text-white hover:bg-slate-700">6/10 - Dolor moderado</SelectItem>
+                                    <SelectItem value="7" className="text-white hover:bg-slate-700">7/10 - Dolor severo</SelectItem>
+                                    <SelectItem value="8" className="text-white hover:bg-slate-700">8/10 - Dolor severo</SelectItem>
+                                    <SelectItem value="9" className="text-white hover:bg-slate-700">9/10 - Dolor severo</SelectItem>
+                                    <SelectItem value="10" className="text-white hover:bg-slate-700">10/10 - Dolor insoportable</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                             </div>
                             
@@ -741,21 +799,38 @@ export default function TensDashboard() {
                             </div>
                           </div>
                         ) : (
-                          <Button
-                            size="sm"
-                            className="w-full bg-blue-600 hover:bg-blue-700"
-                            onClick={() => setFichaEditando(ficha.id)}
-                          >
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                              />
-                            </svg>
-                            📊 Medir Signos Vitales
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="flex-1 bg-blue-600 hover:bg-blue-700"
+                              onClick={() => setFichaEditando(ficha.id)}
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                              </svg>
+                              📊 Medir Signos Vitales
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-teal-600 hover:bg-teal-700"
+                              onClick={() => abrirModalCamas(ficha)}
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 12h18M3 12l4-4m-4 4l4 4m10-4l-4-4m4 4l-4 4"
+                                />
+                              </svg>
+                              🛏️ Asignar Cama
+                            </Button>
+                          </div>
                         )}
                       </div>
                     )
@@ -771,6 +846,95 @@ export default function TensDashboard() {
         open={modalBuscarOpen} 
         onOpenChange={setModalBuscarOpen} 
       />
+
+      {/* Modal Asignación de Camas */}
+      <Dialog open={modalCamasOpen} onOpenChange={setModalCamasOpen}>
+        <DialogContent className="max-w-3xl bg-slate-900 border-slate-800" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              🛏️ Asignar Cama - {fichaParaCama && (fichaParaCama.paciente.es_nn 
+                ? `NN - ${fichaParaCama.paciente.id_temporal || 'Sin ID'}`
+                : `${fichaParaCama.paciente.nombres} ${fichaParaCama.paciente.apellidos}`)}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Seleccione una cama disponible para asignar al paciente
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Filtro por tipo de cama */}
+          <div className="mb-4">
+            <Label htmlFor="tipoCamaFiltro" className="text-slate-300 mb-2 block">
+              Filtrar por tipo de cama
+            </Label>
+            <Select
+              value={tipoCamaFiltro}
+              onValueChange={async (value) => {
+                setTipoCamaFiltro(value)
+                await cargarCamasDisponibles(value !== 'all' ? value : undefined)
+              }}
+            >
+              <SelectTrigger className="bg-slate-800 text-white border-slate-700">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all" className="text-white">Todas las camas</SelectItem>
+                <SelectItem value="general" className="text-white">🛏️ Camas Generales</SelectItem>
+                <SelectItem value="uci" className="text-white">🏥 Camas UCI</SelectItem>
+                <SelectItem value="emergencia" className="text-white">🚨 Salas de Emergencia</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Lista de camas disponibles */}
+          <div className="max-h-96 overflow-y-auto space-y-2">
+            {camasDisponibles.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400">No hay camas disponibles del tipo seleccionado</p>
+              </div>
+            ) : (
+              camasDisponibles.map((cama: any) => (
+                <Card
+                  key={cama.id}
+                  className="border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors"
+                  onClick={() => handleAsignarCama(cama.id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg font-bold text-white">{cama.numero}</span>
+                          <Badge variant="outline" className="border-blue-500 text-blue-400">
+                            {cama.tipo === 'general' ? '🛏️ General' :
+                             cama.tipo === 'uci' ? '🏥 UCI' : '🚨 Emergencia'}
+                          </Badge>
+                          <Badge variant="outline" className="border-green-500 text-green-400">
+                            ✅ Disponible
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-slate-400 space-y-1">
+                          {cama.sala && <p>📍 Sala: {cama.sala}</p>}
+                          {cama.piso && <p>🏢 Piso: {cama.piso}</p>}
+                          {cama.descripcion && <p>{cama.descripcion}</p>}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="bg-teal-600 hover:bg-teal-700"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleAsignarCama(cama.id)
+                        }}
+                      >
+                        Asignar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

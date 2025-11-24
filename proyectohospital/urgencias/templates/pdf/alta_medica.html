@@ -6,7 +6,7 @@
     <style>
         @page {
             size: letter;
-            margin: 2cm;
+            margin: 2cm 1.5cm;
         }
         * {
             margin: 0;
@@ -14,266 +14,431 @@
             box-sizing: border-box;
         }
         body {
-            font-family: 'Arial', sans-serif;
-            font-size: 11pt;
-            line-height: 1.5;
-            color: #333;
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #000;
         }
+        
+        /* HEADER */
         .header {
-            border: 3px solid #059669;
-            padding: 20px;
-            margin-bottom: 30px;
-            background-color: #ecfdf5;
-        }
-        .header h1 {
-            color: #059669;
-            font-size: 24pt;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .header .hospital-info {
-            text-align: center;
-            color: #666;
-            font-size: 10pt;
-            margin-bottom: 15px;
-        }
-        .medico-info {
-            background-color: #fff;
-            padding: 15px;
-            border-left: 4px solid #059669;
+            border-bottom: 3px solid #059669;
+            padding-bottom: 15px;
             margin-bottom: 20px;
         }
-        .medico-info p {
-            margin: 5px 0;
-            font-size: 10pt;
+        .header-top {
+            display: table;
+            width: 100%;
+            margin-bottom: 10px;
         }
-        .section {
-            margin-bottom: 25px;
+        .header-left {
+            display: table-cell;
+            width: 70%;
+            vertical-align: top;
         }
-        .section-title {
-            background-color: #059669;
-            color: white;
-            padding: 10px 15px;
-            font-size: 13pt;
+        .header-right {
+            display: table-cell;
+            width: 30%;
+            vertical-align: top;
+            text-align: right;
+        }
+        .hospital-name {
+            font-size: 16pt;
             font-weight: bold;
-            margin-bottom: 15px;
-        }
-        .patient-box {
-            border: 2px solid #d1d5db;
-            padding: 15px;
-            background-color: #f9fafb;
-            margin-bottom: 20px;
-        }
-        .patient-box p {
-            margin: 5px 0;
-        }
-        .alta-box {
-            border: 3px solid #059669;
-            padding: 20px;
-            background-color: #ecfdf5;
-            margin-bottom: 20px;
-        }
-        .alta-box h3 {
             color: #059669;
-            margin-bottom: 15px;
-            font-size: 14pt;
+            margin-bottom: 3px;
         }
-        .content-box {
-            background-color: white;
+        .department {
+            font-size: 11pt;
+            color: #475569;
+            font-weight: 600;
+        }
+        .hospital-address {
+            font-size: 8pt;
+            color: #64748b;
+            margin-top: 5px;
+        }
+        .document-title {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #059669;
+            text-align: center;
+            margin: 15px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .document-info {
+            text-align: center;
+            font-size: 9pt;
+            color: #64748b;
+            margin-bottom: 20px;
+        }
+        
+        /* ALTA BADGE */
+        .alta-badge {
+            background: #d1fae5;
+            border: 2px solid #059669;
             padding: 15px;
-            margin: 15px 0;
-            border-left: 4px solid #10b981;
+            text-align: center;
+            border-radius: 4px;
+            margin-bottom: 20px;
         }
-        .content-box h4 {
+        .alta-badge h2 {
+            color: #065f46;
+            font-size: 14pt;
+            margin-bottom: 5px;
+        }
+        .alta-badge p {
             color: #047857;
+            font-size: 10pt;
+        }
+        
+        /* SECCIONES */
+        .section {
+            margin-bottom: 18px;
+            page-break-inside: avoid;
+        }
+        .section-header {
+            background: #f1f5f9;
+            border-left: 4px solid #059669;
+            padding: 8px 12px;
+            font-size: 11pt;
+            font-weight: bold;
+            color: #1e293b;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* TABLA DE DATOS */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
             margin-bottom: 10px;
         }
+        .data-table td {
+            padding: 6px 10px;
+            border: 1px solid #e2e8f0;
+            font-size: 9.5pt;
+        }
+        .data-table td.label {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #475569;
+            width: 30%;
+        }
+        .data-table td.value {
+            background: #fff;
+            color: #0f172a;
+        }
+        
+        /* INFO BOX */
+        .info-box {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-left: 4px solid #059669;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 3px;
+        }
+        .info-box h4 {
+            color: #047857;
+            font-size: 10pt;
+            margin-bottom: 8px;
+        }
+        .info-box p {
+            font-size: 9.5pt;
+            color: #1e293b;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        
+        /* DIAGNÓSTICO BOX */
+        .diagnosis-box {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .diagnosis-box .diagnosis-title {
+            font-weight: bold;
+            color: #1e40af;
+            font-size: 10pt;
+            margin-bottom: 6px;
+        }
+        .diagnosis-box .diagnosis-content {
+            font-size: 9.5pt;
+            color: #1e293b;
+            line-height: 1.5;
+        }
+        
+        /* INDICACIONES BOX */
+        .indicaciones-box {
+            background: #fefce8;
+            border: 1px solid #fde047;
+            border-left: 4px solid #eab308;
+            padding: 12px;
+            border-radius: 3px;
+            margin-top: 15px;
+        }
+        .indicaciones-box h4 {
+            color: #854d0e;
+            font-size: 10pt;
+            margin-bottom: 8px;
+        }
+        .indicaciones-box p {
+            font-size: 9.5pt;
+            color: #1e293b;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        
+        /* ADVERTENCIA */
         .warning-box {
-            background-color: #fef3c7;
-            border: 2px solid #f59e0b;
-            padding: 15px;
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            padding: 12px;
             margin: 20px 0;
+            border-radius: 3px;
         }
         .warning-box h4 {
             color: #92400e;
-            margin-bottom: 10px;
+            font-size: 10pt;
+            margin-bottom: 8px;
         }
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin: 15px 0;
-        }
-        .info-item {
-            background-color: #f0fdf4;
-            padding: 10px;
-            border-left: 3px solid #10b981;
-        }
-        .info-item label {
-            font-weight: bold;
-            color: #047857;
+        .warning-box ul {
+            margin-left: 20px;
             font-size: 9pt;
-            display: block;
-            margin-bottom: 5px;
+            color: #78350f;
         }
-        .info-item .value {
-            color: #111827;
-            font-size: 11pt;
+        .warning-box li {
+            margin: 4px 0;
         }
+        
+        /* FIRMA */
         .signature-section {
-            margin-top: 60px;
+            margin-top: 50px;
             text-align: center;
         }
         .signature-line {
-            border-top: 2px solid #333;
+            border-top: 2px solid #1e293b;
             width: 300px;
-            margin: 40px auto 10px;
+            margin: 0 auto 10px;
         }
+        .signature-section p {
+            font-size: 9pt;
+            color: #1e293b;
+            margin: 3px 0;
+        }
+        
+        /* FOOTER */
         .footer {
             position: fixed;
             bottom: 1cm;
-            left: 2cm;
-            right: 2cm;
+            left: 1.5cm;
+            right: 1.5cm;
             text-align: center;
-            font-size: 9pt;
-            color: #6b7280;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 10px;
-        }
-        .badge {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: bold;
-            background-color: #d1fae5;
-            color: #065f46;
-            font-size: 12pt;
+            font-size: 7pt;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
         }
     </style>
 </head>
 <body>
+    <!-- HEADER -->
     <div class="header">
-        <h1>✅ ALTA MÉDICA</h1>
-        <div class="hospital-info">
-            <p><strong>Hospital General - Servicio de Urgencias</strong></p>
-            <p>Dirección: Av. Principal 1234, Santiago, Chile</p>
-            <p>Teléfono: +56 2 2345 6789</p>
-        </div>
-        <div class="medico-info">
-            <p><strong>Dr(a).: {{ medico.nombre }}</strong></p>
-            <p><strong>RUT:</strong> {{ medico.rut }}</p>
-            <p><strong>Fecha de Alta:</strong> {{ ficha.fecha_alta|date:"d/m/Y H:i" }}</p>
-            <p><strong>N° Alta:</strong> ALTA-{{ ficha.id }}-{{ fecha_actual|date:"YmdHis" }}</p>
-        </div>
-    </div>
-
-    <div class="section">
-        <div class="section-title">DATOS DEL PACIENTE</div>
-        <div class="patient-box">
-            <p><strong>Nombre:</strong> {{ paciente.nombre }}</p>
-            <p><strong>RUT:</strong> {{ paciente.rut|default:"Sin RUT registrado" }}</p>
-            <p><strong>Edad:</strong> {{ paciente.edad }} años</p>
-            <p><strong>Sexo:</strong> {{ paciente.get_sexo_display }}</p>
-            <p><strong>Previsión:</strong> {{ paciente.prevision|default:"No especificada" }}</p>
-            <p><strong>N° Ficha:</strong> {{ ficha.id }}</p>
-        </div>
-    </div>
-
-    <div class="section">
-        <div class="alta-box">
-            <h3>INFORMACIÓN DE LA ATENCIÓN</h3>
-            <div class="info-grid">
-                <div class="info-item">
-                    <label>Fecha de Ingreso:</label>
-                    <div class="value">{{ ficha.fecha_ingreso|date:"d/m/Y H:i" }}</div>
-                </div>
-                <div class="info-item">
-                    <label>Fecha de Alta:</label>
-                    <div class="value">{{ ficha.fecha_alta|date:"d/m/Y H:i" }}</div>
-                </div>
-                <div class="info-item">
-                    <label>Tipo de Alta:</label>
-                    <div class="value"><span class="badge">{{ ficha.get_tipo_alta_display|default:"Alta Voluntaria" }}</span></div>
-                </div>
-                <div class="info-item">
-                    <label>Prioridad al Ingreso:</label>
-                    <div class="value">{{ ficha.get_prioridad_display }}</div>
-                </div>
+        <div class="header-top">
+            <div class="header-left">
+                <div class="hospital-name">Hospital General</div>
+                <div class="department">Servicio de Urgencias</div>
+                <div class="hospital-address">Av. Principal 1234, Santiago, Chile | Tel: +56 2 2345 6789</div>
+            </div>
+            <div class="header-right">
+                <div style="font-size: 9pt; color: #64748b;">N° Alta</div>
+                <div style="font-size: 16pt; font-weight: bold; color: #059669;">ALTA-{{ ficha.id }}</div>
             </div>
         </div>
     </div>
-
+    
+    <div class="document-title">Certificado de Alta Médica</div>
+    <div class="document-info">Generado el {{ fecha_actual }}</div>
+    
+    <!-- BADGE DE ALTA -->
+    <div class="alta-badge">
+        <h2>✓ PACIENTE DADO DE ALTA</h2>
+        <p>El paciente ha sido evaluado y autorizado para su egreso</p>
+    </div>
+    
+    <!-- DATOS DEL PACIENTE -->
     <div class="section">
-        <div class="section-title">MOTIVO DE CONSULTA</div>
-        <div class="content-box">
-            <p>{{ ficha.motivo_consulta }}</p>
+        <div class="section-header">Datos del Paciente</div>
+        <table class="data-table">
+            <tr>
+                <td class="label">Nombre Completo:</td>
+                <td class="value">
+                    {% if paciente %}
+                        {{ paciente.nombre }}
+                    {% else %}
+                        PACIENTE NN
+                    {% endif %}
+                </td>
+                <td class="label">RUT:</td>
+                <td class="value">
+                    {% if paciente and paciente.rut %}
+                        {{ paciente.rut }}
+                    {% else %}
+                        Sin RUT
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Edad:</td>
+                <td class="value">
+                    {% if paciente %}
+                        {{ paciente.edad }} años
+                    {% else %}
+                        Desconocida
+                    {% endif %}
+                </td>
+                <td class="label">Sexo:</td>
+                <td class="value">
+                    {% if paciente %}
+                        {{ paciente.get_sexo_display }}
+                    {% else %}
+                        No especificado
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Previsión:</td>
+                <td class="value">
+                    {% if paciente and paciente.prevision %}
+                        {{ paciente.prevision }}
+                    {% else %}
+                        No especificada
+                    {% endif %}
+                </td>
+                <td class="label">N° Ficha:</td>
+                <td class="value">{{ ficha.id }}</td>
+            </tr>
+        </table>
+    </div>
+    
+    <!-- INFORMACIÓN DE ATENCIÓN -->
+    <div class="section">
+        <div class="section-header">Información de Atención</div>
+        <table class="data-table">
+            <tr>
+                <td class="label">Fecha de Ingreso:</td>
+                <td class="value">{{ ficha.fecha_registro|date:"d/m/Y H:i" }}</td>
+                <td class="label">Fecha de Alta:</td>
+                <td class="value">
+                    {% if ficha.fecha_alta %}
+                        {{ ficha.fecha_alta|date:"d/m/Y H:i" }}
+                    {% else %}
+                        {{ fecha_actual }}
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="label">Médico Tratante:</td>
+                <td class="value" colspan="3">
+                    Dr(a). {{ medico.nombre }} - RUT: {{ medico.rut }}
+                </td>
+            </tr>
+            {% if ficha.tipo_alta %}
+            <tr>
+                <td class="label">Tipo de Alta:</td>
+                <td class="value" colspan="3">{{ ficha.get_tipo_alta_display }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    
+    <!-- MOTIVO DE CONSULTA -->
+    <div class="section">
+        <div class="section-header">Motivo de Consulta Original</div>
+        <div class="info-box">
+            <p>{{ ficha.motivo_consulta|default:"No especificado" }}</p>
         </div>
     </div>
-
+    
+    <!-- DIAGNÓSTICO DE ALTA -->
     {% if diagnostico %}
     <div class="section">
-        <div class="section-title">DIAGNÓSTICO DE EGRESO</div>
-        <div class="content-box">
-            <h4>{{ diagnostico.diagnostico }}</h4>
+        <div class="section-header">Diagnóstico de Alta</div>
+        <div class="diagnosis-box">
+            <div class="diagnosis-title">Diagnóstico CIE-10:</div>
+            <div class="diagnosis-content">{{ diagnostico.diagnostico_cie10 }}</div>
         </div>
+        
+        {% if diagnostico.descripcion %}
+        <div class="info-box" style="margin-top: 12px;">
+            <h4>Descripción del Diagnóstico:</h4>
+            <p>{{ diagnostico.descripcion }}</p>
+        </div>
+        {% endif %}
+        
+        {% if diagnostico.indicaciones_medicas %}
+        <div class="indicaciones-box">
+            <h4>Indicaciones y Tratamiento al Alta:</h4>
+            <p>{{ diagnostico.indicaciones_medicas }}</p>
+        </div>
+        {% endif %}
     </div>
-
-    {% if diagnostico.tratamiento %}
+    {% else %}
     <div class="section">
-        <div class="section-title">TRATAMIENTO ADMINISTRADO</div>
-        <div class="content-box">
-            <p style="white-space: pre-wrap; line-height: 1.6;">{{ diagnostico.tratamiento }}</p>
+        <div class="section-header">Diagnóstico de Alta</div>
+        <div class="info-box">
+            <p style="text-align: center; color: #64748b; font-style: italic;">
+                Sin diagnóstico registrado
+            </p>
         </div>
     </div>
     {% endif %}
-
-    {% if diagnostico.indicaciones %}
-    <div class="section">
-        <div class="warning-box">
-            <h4>📋 INDICACIONES AL ALTA:</h4>
-            <div style="white-space: pre-wrap; line-height: 1.6; margin-top: 10px;">{{ diagnostico.indicaciones }}</div>
-        </div>
+    
+    <!-- RECOMENDACIONES -->
+    <div class="warning-box">
+        <h4>⚠️ Signos de Alarma - Volver a Urgencias Si:</h4>
+        <ul>
+            <li>Presenta fiebre mayor a 38.5°C que no cede con medicamentos</li>
+            <li>Dolor intenso que no mejora con analgésicos</li>
+            <li>Dificultad respiratoria o dolor torácico</li>
+            <li>Vómitos persistentes o incapacidad para tomar líquidos</li>
+            <li>Alteración del estado de conciencia</li>
+            <li>Cualquier otro síntoma que considere grave o que empeore</li>
+        </ul>
     </div>
-    {% endif %}
-    {% endif %}
-
-    <div class="section">
-        <div class="warning-box">
-            <h4>⚠️ INSTRUCCIONES GENERALES:</h4>
-            <ul style="margin: 15px 0 0 20px; line-height: 1.8;">
-                <li>Seguir estrictamente las indicaciones médicas</li>
-                <li>Tomar los medicamentos en los horarios indicados</li>
-                <li>Consultar inmediatamente si presenta síntomas de alarma</li>
-                <li>Asistir a controles médicos programados</li>
-                <li>Reposo relativo según indicación médica</li>
-            </ul>
-        </div>
+    
+    <!-- INSTRUCCIONES -->
+    <div class="info-box">
+        <h4>Instrucciones Generales:</h4>
+        <p>• Cumplir estrictamente con las indicaciones médicas
+• Tomar medicamentos según prescripción
+• Control médico según indicación
+• Reposo relativo según actividades permitidas
+• Mantener hidratación adecuada
+• Alimentación según tolerancia</p>
     </div>
-
-    <div class="section">
-        <div class="content-box">
-            <h4>🚨 SIGNOS DE ALARMA - CONSULTAR INMEDIATAMENTE SI PRESENTA:</h4>
-            <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
-                <li>Dolor intenso o que no cede con analgésicos</li>
-                <li>Fiebre mayor a 38.5°C</li>
-                <li>Dificultad respiratoria</li>
-                <li>Sangrado abundante</li>
-                <li>Pérdida de conciencia o confusión</li>
-                <li>Vómitos persistentes o deshidratación</li>
-            </ul>
-        </div>
-    </div>
-
+    
+    <!-- FIRMA -->
     <div class="signature-section">
         <div class="signature-line"></div>
-        <p><strong>{{ medico.nombre }}</strong></p>
+        <p><strong>Dr(a). {{ medico.nombre }}</strong></p>
         <p>RUT: {{ medico.rut }}</p>
-        <p>Médico Cirujano</p>
+        {% if medico.especialidad %}
+        <p>{{ medico.especialidad }}</p>
+        {% endif %}
+        {% if medico.registro_profesional %}
+        <p>Registro: {{ medico.registro_profesional }}</p>
+        {% endif %}
     </div>
-
+    
+    <!-- FOOTER -->
     <div class="footer">
-        <p><strong>El paciente fue dado de alta en buenas condiciones generales</strong></p>
-        <p>Este documento certifica el alta médica del paciente</p>
+        <p>Hospital General - Servicio de Urgencias | Certificado oficial de alta médica</p>
         <p>Generado el {{ fecha_actual }}</p>
     </div>
 </body>

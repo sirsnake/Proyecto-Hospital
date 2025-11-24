@@ -150,39 +150,33 @@ export default function RegistrarPacienteNN() {
       const paciente = await pacientesAPI.crear(pacienteData)
       console.log("✅ Paciente NN creado:", paciente)
 
-      // 2. Crear ficha de emergencia
-      const fichaData = {
+      // 2. Crear ficha de emergencia con signos vitales (igual que en dashboard paramedico)
+      const fichaCompleta = {
         paciente: paciente.id,
         paramedico: user.id,
         motivo_consulta: formData.motivoConsulta,
         circunstancias: formData.caracteristicas || "Paciente NN sin información adicional",
         sintomas: formData.motivoConsulta,
-        nivel_consciencia: formData.escala_glasgow || "15",
+        nivel_consciencia: formData.escala_glasgow ? `Glasgow ${formData.escala_glasgow}` : "Glasgow 15",
+        estado: "en_ruta",
         prioridad: formData.prioridad,
-        estado: "en_traslado",
+        eta: "15 minutos",
+        signos_vitales_data: {
+          presion_sistolica: parseInt(formData.presionSistolica) || 0,
+          presion_diastolica: parseInt(formData.presionDiastolica) || 0,
+          frecuencia_cardiaca: parseInt(formData.frecuenciaCardiaca) || 0,
+          frecuencia_respiratoria: parseInt(formData.frecuenciaRespiratoria) || 0,
+          saturacion_o2: parseInt(formData.saturacionOxigeno) || 0,
+          temperatura: parseFloat(formData.temperatura) || 36.0,
+          glucosa: formData.glucosa && !isNaN(parseInt(formData.glucosa)) ? parseInt(formData.glucosa) : null,
+          escala_glasgow: formData.escala_glasgow && !isNaN(parseInt(formData.escala_glasgow)) ? parseInt(formData.escala_glasgow) : null,
+          eva: formData.eva && !isNaN(parseInt(formData.eva)) ? parseInt(formData.eva) : null
+        }
       }
 
-      console.log("📋 Creando ficha:", fichaData)
-      const ficha = await fichasAPI.crear(fichaData)
-      console.log("✅ Ficha creada:", ficha)
-
-      // 3. Registrar signos vitales
-      const signosData = {
-        ficha: ficha.id,
-        presion_sistolica: parseInt(formData.presionSistolica),
-        presion_diastolica: parseInt(formData.presionDiastolica),
-        frecuencia_cardiaca: parseInt(formData.frecuenciaCardiaca),
-        frecuencia_respiratoria: parseInt(formData.frecuenciaRespiratoria),
-        temperatura: parseFloat(formData.temperatura),
-        saturacion_oxigeno: parseInt(formData.saturacionOxigeno),
-        glucosa: formData.glucosa ? parseInt(formData.glucosa) : null,
-        eva: formData.eva || null,
-        escala_glasgow: formData.escala_glasgow ? parseInt(formData.escala_glasgow) : null,
-      }
-
-      console.log("📋 Registrando signos vitales:", signosData)
-      await signosVitalesAPI.crear(signosData)
-      console.log("✅ Signos vitales registrados")
+      console.log("📋 Creando ficha con signos vitales:", fichaCompleta)
+      const ficha = await fichasAPI.crear(fichaCompleta)
+      console.log("✅ Ficha y signos vitales creados:", ficha)
 
       // 4. Si necesita medicamentos, crear solicitud
       if (formData.necesitaMedicamento && formData.medicamentos) {

@@ -1,19 +1,45 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
+from .models import (Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, 
+                     Anamnesis, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama)
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
     """Serializer para el modelo Usuario"""
     nombre_completo = serializers.SerializerMethodField()
+    password = serializers.CharField(write_only=True, required=False, style={'input_type': 'password'})
     
     class Meta:
         model = Usuario
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'nombre_completo', 'rut', 'rol', 'telefono']
-        read_only_fields = ['id']
+        fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name', 'nombre_completo', 
+                  'rut', 'rol', 'telefono', 'especialidad', 'registro_profesional', 'is_active', 'date_joined', 'last_login']
+        read_only_fields = ['id', 'date_joined', 'last_login']
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False}
+        }
     
     def get_nombre_completo(self, obj):
         return obj.get_full_name()
+    
+    def create(self, validated_data):
+        password = validated_data.pop('password', None)
+        usuario = Usuario(**validated_data)
+        if password:
+            usuario.set_password(password)
+        else:
+            # Contraseña por defecto si no se proporciona
+            usuario.set_password('changeme123')
+        usuario.save()
+        return usuario
+    
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if password:
+            instance.set_password(password)
+        instance.save()
+        return instance
 
 
 class LoginSerializer(serializers.Serializer):
@@ -74,8 +100,17 @@ class SignosVitalesSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'timestamp']
 
 
+class SignosVitalesNestedSerializer(serializers.ModelSerializer):
+    """Serializer para crear signos vitales anidados (dentro de ficha)"""
+    
+    class Meta:
+        model = SignosVitales
+        exclude = ['ficha']  # ficha se asigna automáticamente en la creación anidada
+        read_only_fields = ['id', 'timestamp']
+
+
 class SignosVitalesCreateSerializer(serializers.ModelSerializer):
-    """Serializer para crear signos vitales"""
+    """Serializer para crear signos vitales directamente (con ficha)"""
     
     class Meta:
         model = SignosVitales
@@ -135,6 +170,7 @@ class FichaEmergenciaSerializer(serializers.ModelSerializer):
     paramedico_nombre = serializers.CharField(source='paramedico.get_full_name', read_only=True)
     signos_vitales = SignosVitalesSerializer(many=True, read_only=True)
     solicitudes_medicamentos = SolicitudMedicamentoSerializer(many=True, read_only=True)
+    solicitudes_examenes = SolicitudExamenSerializer(many=True, read_only=True)
     anamnesis = AnamnesisSerializer(read_only=True)
     diagnostico = DiagnosticoSerializer(read_only=True)
     
@@ -146,7 +182,7 @@ class FichaEmergenciaSerializer(serializers.ModelSerializer):
 
 class FichaEmergenciaCreateSerializer(serializers.ModelSerializer):
     """Serializer simplificado para crear fichas de emergencia"""
-    signos_vitales_data = SignosVitalesCreateSerializer(write_only=True)
+    signos_vitales_data = SignosVitalesNestedSerializer(write_only=True)
     
     class Meta:
         model = FichaEmergencia
@@ -159,3 +195,53 @@ class FichaEmergenciaCreateSerializer(serializers.ModelSerializer):
         ficha = FichaEmergencia.objects.create(**validated_data)
         SignosVitales.objects.create(ficha=ficha, **signos_data)
         return ficha
+
+
+class ConfiguracionHospitalSerializer(serializers.ModelSerializer):
+    """Serializer para configuración del hospital"""
+    actualizado_por_nombre = serializers.CharField(source='actualizado_por.get_full_name', read_only=True)
+    
+    class Meta:
+        model = ConfiguracionHospital
+        fields = ['id', 'camas_totales', 'camas_uci', 'salas_emergencia', 'boxes_atencion',
+                  'actualizado_por', 'actualizado_por_nombre', 'fecha_actualizacion']
+        read_only_fields = ['id', 'fecha_actualizacion']
+
+
+class CamaSerializer(serializers.ModelSerializer):
+    """Serializer para camas del hospital"""
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    paciente_nombre = serializers.SerializerMethodField()
+    ficha_id = serializers.IntegerField(source='ficha_actual.id', read_only=True)
+    asignado_por_nombre = serializers.CharField(source='asignado_por.get_full_name', read_only=True)
+    
+    class Meta:
+        model = Cama
+        fields = ['id', 'numero', 'tipo', 'tipo_display', 'estado', 'estado_display',
+                  'piso', 'sala', 'ficha_actual', 'ficha_id', 'paciente_nombre',
+                  'fecha_asignacion', 'asignado_por', 'asignado_por_nombre',
+                  'observaciones', 'fecha_creacion', 'fecha_actualizacion']
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_actualizacion']
+    
+    def get_paciente_nombre(self, obj):
+        if obj.ficha_actual and obj.ficha_actual.paciente:
+            paciente = obj.ficha_actual.paciente
+            if paciente.es_nn:
+                return f"NN - {paciente.id_temporal}"
+            return f"{paciente.nombres} {paciente.apellidos}"
+        return None
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    """Serializer para logs de auditoría"""
+    usuario_nombre = serializers.CharField(source='usuario.get_full_name', read_only=True)
+    usuario_rol = serializers.CharField(source='usuario.rol', read_only=True)
+    accion_display = serializers.CharField(source='get_accion_display', read_only=True)
+    
+    class Meta:
+        model = AuditLog
+        fields = ['id', 'usuario', 'usuario_nombre', 'usuario_rol', 'accion', 
+                  'accion_display', 'modelo', 'objeto_id', 'detalles', 
+                  'ip_address', 'user_agent', 'timestamp']
+        read_only_fields = fields
