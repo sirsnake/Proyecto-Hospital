@@ -78,3 +78,9 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Database backups
+backups/
+*.sql
+*.sql.gz
+backup.log

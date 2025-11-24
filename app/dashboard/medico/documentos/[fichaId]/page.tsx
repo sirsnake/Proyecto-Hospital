@@ -55,18 +55,13 @@ export default function DocumentosFichaPage() {
         credentials: 'include'
       })
       const diagData = await diagResponse.json()
-      console.log('📋 Respuesta diagnósticos:', diagData)
       
       // La API devuelve un objeto con results, no un array directo
       if (diagData.results && diagData.results.length > 0) {
-        console.log('✅ Diagnóstico encontrado:', diagData.results[0])
         setDiagnostico(diagData.results[0])
       } else if (Array.isArray(diagData) && diagData.length > 0) {
         // Por si acaso la API devuelve un array directo
-        console.log('✅ Diagnóstico encontrado (array):', diagData[0])
         setDiagnostico(diagData[0])
-      } else {
-        console.log('❌ No se encontró diagnóstico')
       }
 
     } catch (error) {
@@ -82,32 +77,22 @@ export default function DocumentosFichaPage() {
 
   // Verificar si tiene receta con medicamentos válidos
   const tieneReceta = (() => {
-    console.log('🔍 Verificando receta - diagnostico:', diagnostico)
-    console.log('🔍 medicamentos_prescritos:', diagnostico?.medicamentos_prescritos)
-    
     if (!diagnostico?.medicamentos_prescritos) {
-      console.log('❌ No hay diagnostico o medicamentos_prescritos')
       return false
     }
     
     try {
       const meds = JSON.parse(diagnostico.medicamentos_prescritos)
-      console.log('✅ Medicamentos parseados:', meds)
       
       if (!Array.isArray(meds)) {
-        console.log('❌ No es un array')
         return false
       }
       
       // Verificar que haya al menos un medicamento con nombre y dosis
       const medicamentosValidos = meds.filter(m => m.nombre?.trim() && m.dosis?.trim())
-      console.log('✅ Medicamentos válidos:', medicamentosValidos.length)
       
-      const resultado = medicamentosValidos.length > 0
-      console.log('🎯 tieneReceta:', resultado)
-      return resultado
+      return medicamentosValidos.length > 0
     } catch (e) {
-      console.log('❌ Error parseando:', e)
       return false
     }
   })()

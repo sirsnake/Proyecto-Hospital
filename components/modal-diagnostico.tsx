@@ -108,7 +108,6 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
       return
     }
     
-    console.log('📋 Datos del diagnóstico a enviar:', formData)
     onConfirm(formData)
     setGuardado(true)
     

@@ -79,7 +79,6 @@ export default function MedicoDashboard() {
       
       // Cargar fichas en hospital
       const fichasResponse = await fichasAPI.enHospital()
-      console.log('🏥 Respuesta fichas en hospital:', fichasResponse)
       
       // Transformar datos de snake_case a camelCase
       const fichasTransformadas = (Array.isArray(fichasResponse) ? fichasResponse : []).map((ficha: any) => ({
@@ -134,12 +133,10 @@ export default function MedicoDashboard() {
         }))
       }))
       
-      console.log('🏥 Fichas transformadas:', fichasTransformadas)
       setFichasActivas(fichasTransformadas)
       
       // Cargar solicitudes pendientes
       const solicitudesResponse = await solicitudesMedicamentosAPI.pendientes()
-      console.log('💊 Respuesta solicitudes:', solicitudesResponse)
       
       const solicitudesTransformadas = (Array.isArray(solicitudesResponse) ? solicitudesResponse : []).map((sol: any) => ({
         id: sol.id,
@@ -151,12 +148,10 @@ export default function MedicoDashboard() {
         estado: sol.estado
       }))
       
-      console.log('💊 Solicitudes transformadas:', solicitudesTransformadas)
       setSolicitudesPendientes(solicitudesTransformadas)
       
       // Cargar fichas atendidas (con diagnóstico)
       const fichasAtendidasResponse = await fichasAPI.atendidas()
-      console.log('📋 Fichas atendidas response:', fichasAtendidasResponse)
       
       const fichasConDiagnostico = (Array.isArray(fichasAtendidasResponse) ? fichasAtendidasResponse : [])
         .map((ficha: any) => ({
@@ -176,7 +171,7 @@ export default function MedicoDashboard() {
       setFichasAtendidas(fichasConDiagnostico)
       
     } catch (err: any) {
-      console.error('❌ Error al cargar datos:', err)
+      console.error('Error al cargar datos:', err)
       setError(err.message || "Error al cargar datos")
       setFichasActivas([])
       setSolicitudesPendientes([])
@@ -311,10 +306,7 @@ export default function MedicoDashboard() {
         prioridad: solicitud.prioridad
       }
       
-      console.log('🧪 Enviando solicitud de exámenes:', data)
-      
       const response = await solicitudesExamenesAPI.crear(data)
-      console.log('✅ Exámenes solicitados:', response)
       
       setSuccess("✅ Exámenes solicitados exitosamente")
       setFichaParaExamen(null)
@@ -322,7 +314,7 @@ export default function MedicoDashboard() {
       
       setTimeout(() => setSuccess(""), 3000)
     } catch (err: any) {
-      console.error('❌ Error al solicitar exámenes:', err)
+      console.error('Error al solicitar exámenes:', err)
       setError(err.message || "Error al solicitar exámenes")
     } finally {
       setLoading(false)
@@ -348,10 +340,7 @@ export default function MedicoDashboard() {
         medicamentos_prescritos: diagnosticoForm.medicamentos || ""
       }
       
-      console.log('📋 Enviando diagnóstico:', data)
-      
       const response = await diagnosticosAPI.crear(data)
-      console.log('✅ Diagnóstico guardado:', response)
       
       setSuccess("✅ Diagnóstico guardado exitosamente. Paciente dado de alta.")
       setDiagnosticoGuardado(true)
@@ -360,7 +349,7 @@ export default function MedicoDashboard() {
       
       setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
-      console.error('❌ Error al guardar diagnóstico:', err)
+      console.error('Error al guardar diagnóstico:', err)
       setError(err.message || "Error al guardar diagnóstico")
     } finally {
       setLoading(false)

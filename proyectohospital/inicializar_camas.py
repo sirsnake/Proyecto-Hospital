@@ -14,7 +14,7 @@ from urgencias.models import ConfiguracionHospital, Cama, Usuario
 
 # Crear configuración inicial
 config = ConfiguracionHospital.get_configuracion()
-print(f'✅ Configuración creada: {config.camas_totales} camas totales')
+# Configuración creada
 
 # Crear camas de ejemplo
 camas_creadas = 0
@@ -61,8 +61,4 @@ for i in range(1, 11):
     if created:
         camas_creadas += 1
 
-print(f'✅ Se crearon {camas_creadas} camas nuevas')
-print(f'📊 Total de camas en el sistema: {Cama.objects.count()}')
-print(f'   - Generales: {Cama.objects.filter(tipo="general").count()}')
-print(f'   - UCI: {Cama.objects.filter(tipo="uci").count()}')
-print(f'   - Emergencia: {Cama.objects.filter(tipo="emergencia").count()}')
+# Camas inicializadas correctamente

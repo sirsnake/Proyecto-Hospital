@@ -18,7 +18,7 @@ from urgencias.models import Usuario, AuditLog
 admin = Usuario.objects.filter(rol='administrador').first()
 
 if not admin:
-    print("No se encontró usuario administrador")
+    pass  # No hay usuario administrador
     sys.exit(1)
 
 # Crear logs de prueba
@@ -73,5 +73,4 @@ for log_data in logs_data:
     )
     created += 1
 
-print(f'✅ Se crearon {created} logs de auditoría')
-print(f'📊 Total de logs en la base de datos: {AuditLog.objects.count()}')
+# Logs de auditoría creados

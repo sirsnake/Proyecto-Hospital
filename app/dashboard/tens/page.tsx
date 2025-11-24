@@ -66,23 +66,11 @@ export default function TensDashboard() {
       
       // Cargar fichas en ruta
       const enRuta = await fichasAPI.enRuta()
-      console.log('🚑 Fichas en ruta:', enRuta)
       setFichasEnRuta(Array.isArray(enRuta) ? enRuta : [])
       
       // Cargar fichas en hospital
       const enHospital = await fichasAPI.enHospital()
-      console.log('🏥 Fichas en hospital:', enHospital)
-      
-      // Log detallado de signos vitales
-      if (Array.isArray(enHospital) && enHospital.length > 0) {
-        enHospital.forEach((ficha: any) => {
-          console.log(`📋 Ficha ${ficha.id} tiene ${ficha.signos_vitales?.length || 0} mediciones de signos vitales:`, ficha.signos_vitales)
-        })
-      }
-      
       setFichasEnHospital(Array.isArray(enHospital) ? enHospital : [])
-      
-      console.log(`📊 Total: ${enRuta.length || 0} en ruta, ${enHospital.length || 0} en hospital`)
     } catch (err: any) {
       console.error('Error al cargar fichas:', err)
       setError(err.message || "Error al cargar fichas")
@@ -149,42 +137,31 @@ export default function TensDashboard() {
   }
 
   const handleGuardarSignosVitales = async (fichaId: number) => {
-    console.log('🔵 handleGuardarSignosVitales llamado con fichaId:', fichaId)
-    console.log('🔵 Estado actual nuevosSignos:', nuevosSignos)
     try {
-      console.log('🔵 Iniciando try block...')
       setLoading(true)
       setError("")
       
       // Validar que al menos un campo esté completo
       const algunCampoCompleto = Object.values(nuevosSignos).some(val => val !== "")
-      console.log('🔵 Campo completo?', algunCampoCompleto)
       if (!algunCampoCompleto) {
-        console.log('❌ Validación falló: no hay campos completos')
         setError("Debe completar al menos un signo vital")
         setLoading(false)
         return
       }
       
       // Validar escala de Glasgow (debe estar entre 3 y 15)
-      console.log('🔵 Validando Glasgow:', nuevosSignos.escalaGlasgow)
       if (nuevosSignos.escalaGlasgow && (parseInt(nuevosSignos.escalaGlasgow) < 3 || parseInt(nuevosSignos.escalaGlasgow) > 15)) {
-        console.log('❌ Validación falló: Glasgow fuera de rango')
         setError("La Escala de Glasgow debe estar entre 3 y 15")
         setLoading(false)
         return
       }
       
       // Validar EVA (debe estar entre 0 y 10)
-      console.log('🔵 Validando EVA:', nuevosSignos.eva)
       if (nuevosSignos.eva && (parseInt(nuevosSignos.eva) < 0 || parseInt(nuevosSignos.eva) > 10)) {
-        console.log('❌ Validación falló: EVA fuera de rango')
         setError("La escala EVA debe estar entre 0 y 10")
         setLoading(false)
         return
       }
-      
-      console.log('✅ Validaciones pasadas, preparando datos...')
       
       const data = {
         ficha: fichaId,
@@ -199,10 +176,7 @@ export default function TensDashboard() {
         eva: nuevosSignos.eva || null
       }
       
-      console.log('📊 Guardando nuevos signos vitales:', data)
-      
       const resultado = await signosVitalesAPI.crear(data)
-      console.log('✅ Respuesta del servidor:', resultado)
       setSuccess("✅ Signos vitales actualizados exitosamente")
       
       // Limpiar formulario
@@ -220,17 +194,13 @@ export default function TensDashboard() {
       setFichaEditando(null)
       
       // Recargar fichas
-      console.log('🔄 Recargando fichas después de guardar signos...')
       await cargarFichas()
-      console.log('✅ Fichas recargadas')
       
       setTimeout(() => setSuccess(""), 3000)
     } catch (err: any) {
-      console.error('❌ Error al guardar signos vitales:', err)
-      console.error('❌ Stack:', err.stack)
+      console.error('Error al guardar signos vitales:', err)
       setError(err.message || "Error al guardar signos vitales")
     } finally {
-      console.log('🔵 Finally block - setLoading(false)')
       setLoading(false)
     }
   }

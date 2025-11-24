@@ -146,9 +146,7 @@ export default function RegistrarPacienteNN() {
         id_temporal: nuevoIdTemporal,
       }
 
-      console.log("📋 Creando paciente NN:", pacienteData)
       const paciente = await pacientesAPI.crear(pacienteData)
-      console.log("✅ Paciente NN creado:", paciente)
 
       // 2. Crear ficha de emergencia con signos vitales (igual que en dashboard paramedico)
       const fichaCompleta = {
@@ -174,9 +172,7 @@ export default function RegistrarPacienteNN() {
         }
       }
 
-      console.log("📋 Creando ficha con signos vitales:", fichaCompleta)
       const ficha = await fichasAPI.crear(fichaCompleta)
-      console.log("✅ Ficha y signos vitales creados:", ficha)
 
       // 4. Si necesita medicamentos, crear solicitud
       if (formData.necesitaMedicamento && formData.medicamentos) {
@@ -190,9 +186,7 @@ export default function RegistrarPacienteNN() {
           estado: "completado",
         }
 
-        console.log("📋 Creando solicitud de medicamento:", solicitudMedicamentoData)
         await solicitudesMedicamentosAPI.crear(solicitudMedicamentoData)
-        console.log("✅ Solicitud de medicamento creada")
       }
 
       // Redirigir al dashboard con mensaje de éxito

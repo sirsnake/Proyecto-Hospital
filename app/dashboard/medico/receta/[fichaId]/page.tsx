@@ -103,33 +103,26 @@ export default function RecetaMedicaPage() {
           if (diag.medicamentos_prescritos) {
             try {
               const meds = JSON.parse(diag.medicamentos_prescritos)
-              console.log('🔍 Medicamentos parseados:', meds)
               
               // Verificar si hay medicamentos VÁLIDOS (con nombre y dosis)
               const medicamentosValidos = Array.isArray(meds) 
                 ? meds.filter(m => m.nombre?.trim() && m.dosis?.trim())
                 : []
               
-              console.log('✅ Medicamentos válidos encontrados:', medicamentosValidos.length)
-              
               if (medicamentosValidos.length > 0) {
                 setMedicamentos(meds)
                 setRecetaGuardada(true)
-                console.log('✓ Receta marcada como GUARDADA')
               } else {
                 // Array vacío o solo medicamentos vacíos
                 setRecetaGuardada(false)
-                console.log('✗ Receta marcada como NO GUARDADA (sin medicamentos válidos)')
               }
             } catch (e) {
               // Si no es JSON válido, es formato antiguo - no hay receta guardada
               setRecetaGuardada(false)
-              console.log('✗ Receta marcada como NO GUARDADA (error de parse)')
             }
           } else {
             // No hay receta guardada
             setRecetaGuardada(false)
-            console.log('✗ Receta marcada como NO GUARDADA (sin medicamentos_prescritos)')
           }
         }
       }
@@ -255,9 +248,6 @@ export default function RecetaMedicaPage() {
       </DashboardLayout>
     )
   }
-
-  // Log del estado antes del render
-  console.log('🎨 RENDERIZANDO - recetaGuardada:', recetaGuardada)
 
   return (
     <DashboardLayout>

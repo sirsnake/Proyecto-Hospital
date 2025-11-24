@@ -113,10 +113,8 @@ export default function ParamedicoDashboard() {
           }
           setUbicacionActual(coords)
           calcularDistanciaYETA(coords)
-          console.log('📍 Ubicación actualizada:', coords)
         },
         (error) => {
-          console.warn('⚠️ No se pudo obtener ubicación GPS:', error.message)
           // No mostrar error al usuario, usar ETA manual
         }
       )
@@ -149,7 +147,6 @@ export default function ParamedicoDashboard() {
       : `${Math.floor(tiempoMinutos / 60)}h ${tiempoMinutos % 60}min`
     
     setFichaData(prev => ({ ...prev, eta: etaTexto }))
-    console.log(`🚑 Distancia al hospital: ${distancia.toFixed(1)} km - ETA: ${etaTexto}`)
   }
 
   const cargarSolicitudes = async () => {
@@ -187,15 +184,12 @@ export default function ParamedicoDashboard() {
         }
       } catch (searchErr) {
         // Si falla la búsqueda, continuar con la creación (esto es normal para pacientes nuevos)
-        console.log('ℹ️ Paciente nuevo, procediendo a crear registro')
       }
       
       const data = {
         ...pacienteData,
         es_nn: false
       }
-      
-      console.log('Enviando datos del paciente:', data)
       
       const paciente = await pacientesAPI.crear(data)
       setPacienteCreado(paciente)
@@ -264,18 +258,7 @@ export default function ParamedicoDashboard() {
         }
       }
       
-      console.log('📤 Enviando ficha:', fichaCompleta)
-      console.log('📤 Validando campos:', {
-        paciente_id: fichaCompleta.paciente,
-        paramedico_id: fichaCompleta.paramedico,
-        tiene_motivo: !!fichaCompleta.motivo_consulta,
-        tiene_circunstancias: !!fichaCompleta.circunstancias,
-        tiene_prioridad: !!fichaCompleta.prioridad,
-        presion_sistolica: fichaCompleta.signos_vitales_data.presion_sistolica
-      })
-      
       const response = await fichasAPI.crear(fichaCompleta)
-      console.log('✅ Respuesta del servidor:', response)
       
       if (response && response.id) {
         setSuccess(`¡Ficha #${response.id} enviada al hospital exitosamente! Ahora puede solicitar medicamentos si es necesario.`)
@@ -298,9 +281,7 @@ export default function ParamedicoDashboard() {
       
       setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
-      console.error('❌ Error completo:', err)
-      console.error('❌ Mensaje de error:', err.message)
-      console.error('❌ Stack:', err.stack)
+      console.error('Error al enviar ficha:', err)
       setError(err.message || "Error al enviar ficha")
     } finally {
       setLoading(false)
@@ -308,43 +289,30 @@ export default function ParamedicoDashboard() {
   }
 
   const handleSolicitarMedicamento = async () => {
-    console.log('🚀 handleSolicitarMedicamento iniciado')
-    console.log('📝 Datos de solicitud:', solicitudData)
-    
     try {
       setLoading(true)
       setError("")
       
       if (!solicitudData.medicamento || !solicitudData.dosis || !solicitudData.justificacion) {
-        console.log('❌ Validación fallida: campos incompletos')
         setError("Complete todos los campos de la solicitud")
         return
       }
-      console.log('✅ Validación campos OK')
       
-      console.log('🔍 Verificando paciente:', { pacienteCreado })
       if (!pacienteCreado) {
-        console.log('❌ Validación fallida: no hay paciente registrado')
         setError("Primero debe registrar un paciente y crear una ficha")
         return
       }
-      console.log('✅ Validación paciente OK')
       
       // Buscar fichas del paramédico en ruta o en hospital
-      console.log('🔍 Buscando fichas del paramédico:', user.id)
       const response = await fichasAPI.listar({ paramedico: user.id })
-      console.log('📋 Respuesta completa:', response)
       
       // La API devuelve un objeto con results
       const fichas = response.results || []
-      console.log('📋 Fichas extraídas:', fichas.length, 'fichas encontradas')
       
       if (!Array.isArray(fichas) || fichas.length === 0) {
         setError("⚠️ No hay fichas enviadas. Primero debe: 1) Registrar un paciente, 2) Llenar los signos vitales y 3) Enviar la ficha al hospital.")
         return
       }
-      
-      console.log('📋 Usando ficha más reciente:', fichas[0])
       
       // Usar la ficha más reciente
       const fichaReciente = fichas[0]
@@ -357,19 +325,16 @@ export default function ParamedicoDashboard() {
         justificacion: solicitudData.justificacion
       }
       
-      console.log('💊 Enviando solicitud de medicamento:', solicitud)
       const resultado = await solicitudesMedicamentosAPI.crear(solicitud)
-      console.log('✅ Solicitud creada:', resultado)
       
       setSuccess(`Solicitud de medicamento enviada al médico (Ficha #${fichaReciente.id})`)
       setSolicitudData({ medicamento: "", dosis: "", justificacion: "" })
       await cargarSolicitudes()
       setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
-      console.error('❌ Error en handleSolicitarMedicamento:', err)
+      console.error('Error al enviar solicitud de medicamento:', err)
       setError(err.message || "Error al enviar solicitud")
     } finally {
-      console.log('🏁 handleSolicitarMedicamento finalizado')
       setLoading(false)
     }
   }
@@ -950,10 +915,7 @@ export default function ParamedicoDashboard() {
                 </div>
 
                 <Button 
-                  onClick={() => {
-                    console.log('🔘 BOTÓN CLICKEADO - handleSolicitarMedicamento existe:', typeof handleSolicitarMedicamento)
-                    handleSolicitarMedicamento()
-                  }}
+                  onClick={handleSolicitarMedicamento}
                   disabled={loading}
                   className="w-full bg-blue-600 hover:bg-blue-700"
                 >

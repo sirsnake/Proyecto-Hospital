@@ -40,7 +40,6 @@ export default function HistorialPaciente() {
       setError("")
       
       const data = await pacientesAPI.historial(parseInt(pacienteId))
-      console.log('📋 Historial cargado:', data)
       
       setPaciente(data.paciente)
       setFichas(data.fichas || [])

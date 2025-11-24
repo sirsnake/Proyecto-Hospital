@@ -34,7 +34,6 @@ export function ModalExamenes({ open, onOpenChange, ficha, onConfirm }: ModalExa
       return
     }
     
-    console.log('🧪 Datos de solicitud de exámenes:', formData)
     onConfirm(formData)
     
     // Resetear formulario

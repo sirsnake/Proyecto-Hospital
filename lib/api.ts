@@ -61,9 +61,9 @@ const fetchWithCredentials = async (url: string, options: RequestInit = {}) => {
     
     // 404 en búsqueda de paciente no es un error crítico
     if (response.status === 404 && url.includes('/buscar/')) {
-      console.log('ℹ️ Paciente no encontrado (se creará uno nuevo)')
+      // Paciente no encontrado - se creará uno nuevo
     } else {
-      console.error('❌ Error del servidor:', error)
+      console.error('Error del servidor:', error)
     }
     
     // Si hay errores de validación, mostrarlos todos

@@ -367,9 +367,8 @@ class DiagnosticoViewSet(viewsets.ModelViewSet):
                 ficha = FichaEmergencia.objects.get(id=ficha_id)
                 ficha.estado = 'atendido'
                 ficha.save()
-                print(f"✅ Ficha #{ficha_id} marcada como atendida automáticamente")
             except FichaEmergencia.DoesNotExist:
-                print(f"⚠️ Ficha #{ficha_id} no encontrada")
+                pass
         
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

@@ -1,0 +1,83 @@
+# ===================================
+# CONFIGURACIÓN DE CRON PARA BACKUPS
+# ===================================
+
+# Para editar tu crontab, ejecuta:
+# crontab -e
+
+# Para ver tu crontab actual:
+# crontab -l
+
+# ==========================================
+# EJEMPLOS DE CONFIGURACIÓN (copia y pega):
+# ==========================================
+
+# 1️⃣ Backup diario a las 3:00 AM (RECOMENDADO)
+0 3 * * * /Users/diego/Desktop/Hospital/proyectohospital/backup_diario.sh
+
+# 2️⃣ Backup cada 12 horas (3:00 AM y 3:00 PM)
+0 3,15 * * * /Users/diego/Desktop/Hospital/proyectohospital/backup_diario.sh
+
+# 3️⃣ Backup cada 6 horas
+0 */6 * * * /Users/diego/Desktop/Hospital/proyectohospital/backup_diario.sh
+
+# 4️⃣ Backup cada lunes a las 2:00 AM
+0 2 * * 1 /Users/diego/Desktop/Hospital/proyectohospital/backup_diario.sh
+
+# 5️⃣ Backup cada hora (para testing - NO recomendado en producción)
+0 * * * * /Users/diego/Desktop/Hospital/proyectohospital/backup_diario.sh
+
+# ==========================================
+# FORMATO DE CRON:
+# ==========================================
+# * * * * * comando_a_ejecutar
+# │ │ │ │ │
+# │ │ │ │ └─── Día de la semana (0-7, donde 0 y 7 = Domingo)
+# │ │ │ └───── Mes (1-12)
+# │ │ └─────── Día del mes (1-31)
+# │ └───────── Hora (0-23)
+# └─────────── Minuto (0-59)
+
+# ==========================================
+# PASOS PARA CONFIGURAR:
+# ==========================================
+
+# 1. Abrir el editor de crontab:
+#    crontab -e
+
+# 2. Presionar 'i' para entrar en modo inserción (si usa vim)
+
+# 3. Pegar una de las líneas de ejemplo de arriba
+
+# 4. Presionar ESC, luego escribir ':wq' y Enter para guardar
+
+# 5. Verificar que se guardó correctamente:
+#    crontab -l
+
+# ==========================================
+# VERIFICAR QUE FUNCIONA:
+# ==========================================
+
+# Para ver si el cron se ejecutó (macOS):
+# tail -f /Users/diego/Desktop/Hospital/backups/backup.log
+
+# Para ver backups creados:
+# ls -lh /Users/diego/Desktop/Hospital/proyectohospital/backups/
+
+# ==========================================
+# TROUBLESHOOTING:
+# ==========================================
+
+# Si el cron no funciona, verifica:
+# 1. Permisos del script:
+#    ls -l /Users/diego/Desktop/Hospital/proyectohospital/backup_diario.sh
+#    (debe mostrar -rwxr-xr-x)
+
+# 2. Ruta completa en el cron (NO usar rutas relativas)
+
+# 3. En macOS, dar permisos a cron:
+#    System Settings > Privacy & Security > Full Disk Access
+#    Añadir 'cron'
+
+# 4. Probar el script manualmente primero:
+#    /Users/diego/Desktop/Hospital/proyectohospital/backup_diario.sh

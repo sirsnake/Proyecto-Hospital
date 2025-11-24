@@ -7,9 +7,11 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Sistema de Gestión Médica - Servicio de Salud Regional",
-  description: "Sistema de gestión de urgencias médicas para el Servicio de Salud Regional de Chile",
-  generator: "v0.app",
+  title: "Sistema de Gestión de Urgencias | Hospital Regional",
+  description: "Sistema de gestión de urgencias médicas - Registro y seguimiento de pacientes",
+  icons: {
+    icon: "/favicon.ico",
+  },
 }
 
 export default function RootLayout({
