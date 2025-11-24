@@ -284,7 +284,7 @@ export default function ParamedicoDashboard() {
       }
       
       // Limpiar solo los formularios de signos vitales y ficha
-      // NO limpiar pacienteCreado/pacienteNN para poder solicitar medicamentos después
+      // NO limpiar pacienteCreado para poder solicitar medicamentos después
       setSignosData({
         presion_sistolica: "", presion_diastolica: "", frecuencia_cardiaca: "",
         frecuencia_respiratoria: "", saturacion_o2: "", temperatura: "",
@@ -294,7 +294,7 @@ export default function ParamedicoDashboard() {
         motivo_consulta: "", circunstancias: "", sintomas: "",
         nivel_consciencia: "", prioridad: "", eta: "15 minutos"
       })
-      // Mantener pacienteCreado y pacienteNN para poder solicitar medicamentos
+      // Mantener pacienteCreado para poder solicitar medicamentos
       
       setTimeout(() => setSuccess(""), 5000)
     } catch (err: any) {
@@ -539,7 +539,6 @@ export default function ParamedicoDashboard() {
                         className="bg-slate-800 border-slate-700 text-white"
                         value={pacienteData.rut}
                         onChange={(e) => setPacienteData({...pacienteData, rut: e.target.value})}
-                        disabled={!!pacienteNN}
                       />
                     </div>
                     <div className="space-y-2">
@@ -549,7 +548,6 @@ export default function ParamedicoDashboard() {
                       <Select 
                         value={pacienteData.sexo}
                         onValueChange={(value) => setPacienteData({...pacienteData, sexo: value})}
-                        disabled={!!pacienteNN}
                       >
                         <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                           <SelectValue placeholder="Seleccionar" />
@@ -570,7 +568,6 @@ export default function ParamedicoDashboard() {
                         className="bg-slate-800 border-slate-700 text-white"
                         value={pacienteData.nombres}
                         onChange={(e) => setPacienteData({...pacienteData, nombres: e.target.value})}
-                        disabled={!!pacienteNN}
                       />
                     </div>
                     <div className="space-y-2">
@@ -583,7 +580,6 @@ export default function ParamedicoDashboard() {
                         className="bg-slate-800 border-slate-700 text-white"
                         value={pacienteData.apellidos}
                         onChange={(e) => setPacienteData({...pacienteData, apellidos: e.target.value})}
-                        disabled={!!pacienteNN}
                       />
                     </div>
                     <div className="space-y-2">
@@ -596,7 +592,6 @@ export default function ParamedicoDashboard() {
                         className="bg-slate-800 border-slate-700 text-white"
                         value={pacienteData.telefono}
                         onChange={(e) => setPacienteData({...pacienteData, telefono: e.target.value})}
-                        disabled={!!pacienteNN}
                       />
                     </div>
                     <div className="space-y-2">
@@ -609,12 +604,11 @@ export default function ParamedicoDashboard() {
                         className="bg-slate-800 border-slate-700 text-white"
                         value={pacienteData.fecha_nacimiento}
                         onChange={(e) => setPacienteData({...pacienteData, fecha_nacimiento: e.target.value})}
-                        disabled={!!pacienteNN}
                       />
                     </div>
                   </div>
                   
-                  {!pacienteNN && !pacienteCreado && (
+                  {!pacienteCreado && (
                     <Button 
                       onClick={handleRegistrarPaciente} 
                       disabled={loading}
@@ -886,7 +880,7 @@ export default function ParamedicoDashboard() {
                 <div className="flex gap-3 pt-4">
                   <Button 
                     onClick={handleEnviarFicha}
-                    disabled={loading || (!pacienteCreado && !pacienteNN)}
+                    disabled={loading || !pacienteCreado}
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                   >
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

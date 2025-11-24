@@ -26,7 +26,7 @@ export default function RegistrarPacienteNN() {
     edadAproximada: "",
     caracteristicas: "",
     motivoConsulta: "",
-    prioridad: "media",
+    prioridad: "C3",
     // Signos vitales
     presionSistolica: "",
     presionDiastolica: "",
@@ -34,7 +34,9 @@ export default function RegistrarPacienteNN() {
     frecuenciaRespiratoria: "",
     temperatura: "",
     saturacionOxigeno: "",
-    glicemia: "",
+    glucosa: "",
+    eva: "",
+    escala_glasgow: "",
     // Medicamentos
     necesitaMedicamento: false,
     medicamentos: "",
@@ -102,7 +104,9 @@ export default function RegistrarPacienteNN() {
         frecuencia_respiratoria: parseInt(formData.frecuenciaRespiratoria),
         temperatura: parseFloat(formData.temperatura),
         saturacion_oxigeno: parseInt(formData.saturacionOxigeno),
-        glicemia: formData.glicemia ? parseInt(formData.glicemia) : null,
+        glucosa: formData.glucosa ? parseInt(formData.glucosa) : null,
+        eva: formData.eva || null,
+        escala_glasgow: formData.escala_glasgow ? parseInt(formData.escala_glasgow) : null,
       }
 
       console.log("📋 Registrando signos vitales:", signosData)
@@ -237,16 +241,18 @@ export default function RegistrarPacienteNN() {
 
                 <div className="space-y-2">
                   <Label className="text-slate-300">
-                    Prioridad <span className="text-red-500">*</span>
+                    Categorización de Urgencia <span className="text-red-500">*</span>
                   </Label>
                   <Select value={formData.prioridad} onValueChange={(value) => setFormData({ ...formData, prioridad: value })}>
                     <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                      <SelectValue />
+                      <SelectValue placeholder="Seleccionar nivel de urgencia" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="alta">🔴 Alta (Crítico)</SelectItem>
-                      <SelectItem value="media">🟡 Media (Urgente)</SelectItem>
-                      <SelectItem value="baja">🟢 Baja (No urgente)</SelectItem>
+                      <SelectItem value="C1">🔴 C1: Urgencia vital / inmediato</SelectItem>
+                      <SelectItem value="C2">🟠 C2: Riesgo vital / 30 min</SelectItem>
+                      <SelectItem value="C3">🟡 C3: Patología urgente / 1h30</SelectItem>
+                      <SelectItem value="C4">🟢 C4: Urgencia relativa / 3hrs</SelectItem>
+                      <SelectItem value="C5">⚪ C5: No urgente / 3-4hrs</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -294,19 +300,19 @@ export default function RegistrarPacienteNN() {
                   <Label className="text-slate-300">
                     Presión Arterial (mmHg) <span className="text-red-500">*</span>
                   </Label>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex gap-2">
                     <Input
                       type="number"
-                      placeholder="Sistólica"
+                      placeholder="120"
                       value={formData.presionSistolica}
                       onChange={(e) => setFormData({ ...formData, presionSistolica: e.target.value })}
                       className="bg-slate-800 border-slate-700 text-white"
                       required
                     />
-                    <span className="text-slate-400 font-bold">/</span>
+                    <span className="text-slate-400 flex items-center">/</span>
                     <Input
                       type="number"
-                      placeholder="Diastólica"
+                      placeholder="80"
                       value={formData.presionDiastolica}
                       onChange={(e) => setFormData({ ...formData, presionDiastolica: e.target.value })}
                       className="bg-slate-800 border-slate-700 text-white"
@@ -321,7 +327,7 @@ export default function RegistrarPacienteNN() {
                   </Label>
                   <Input
                     type="number"
-                    placeholder="Ej: 80"
+                    placeholder="75"
                     value={formData.frecuenciaCardiaca}
                     onChange={(e) => setFormData({ ...formData, frecuenciaCardiaca: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
@@ -350,7 +356,7 @@ export default function RegistrarPacienteNN() {
                   <Input
                     type="number"
                     step="0.1"
-                    placeholder="Ej: 36.5"
+                    placeholder="36.5"
                     value={formData.temperatura}
                     onChange={(e) => setFormData({ ...formData, temperatura: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
@@ -373,15 +379,58 @@ export default function RegistrarPacienteNN() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Glicemia (mg/dL)</Label>
+                  <Label className="text-slate-300">Glucosa (mg/dL)</Label>
                   <Input
                     type="number"
-                    placeholder="Opcional"
-                    value={formData.glicemia}
-                    onChange={(e) => setFormData({ ...formData, glicemia: e.target.value })}
+                    placeholder="90"
+                    value={formData.glucosa}
+                    onChange={(e) => setFormData({ ...formData, glucosa: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  EVA - Escala Visual Análoga del Dolor
+                </Label>
+                <Select value={formData.eva} onValueChange={(value) => setFormData({ ...formData, eva: value })}>
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="Seleccionar nivel de dolor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">0 - Sin dolor</SelectItem>
+                    <SelectItem value="1">1/10 - Dolor leve</SelectItem>
+                    <SelectItem value="2">2/10 - Dolor leve</SelectItem>
+                    <SelectItem value="3">3/10 - Dolor leve</SelectItem>
+                    <SelectItem value="4">4/10 - Dolor moderado</SelectItem>
+                    <SelectItem value="5">5/10 - Dolor moderado</SelectItem>
+                    <SelectItem value="6">6/10 - Dolor moderado</SelectItem>
+                    <SelectItem value="7">7/10 - Dolor severo</SelectItem>
+                    <SelectItem value="8">8/10 - Dolor severo</SelectItem>
+                    <SelectItem value="9">9/10 - Dolor severo</SelectItem>
+                    <SelectItem value="10">10/10 - Dolor insoportable</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-400">0-3: Leve • 4-6: Moderado • 7-10: Severo</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  Escala de Glasgow
+                </Label>
+                <Select value={formData.escala_glasgow} onValueChange={(value) => setFormData({ ...formData, escala_glasgow: value })}>
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="Seleccionar nivel de consciencia" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15">15 - Consciente y orientado</SelectItem>
+                    <SelectItem value="14">14 - Confuso</SelectItem>
+                    <SelectItem value="13">13 - Respuesta verbal inapropiada</SelectItem>
+                    <SelectItem value="8">8 - Semiconsciente</SelectItem>
+                    <SelectItem value="3">3 - Inconsciente</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </CardContent>
           </Card>
