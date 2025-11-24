@@ -13,14 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ModalPacienteNN } from "@/components/modal-paciente-nn"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 
 export default function ParamedicoDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("registro")
-  const [modalNNOpen, setModalNNOpen] = useState(false)
   const [modalBuscarOpen, setModalBuscarOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -73,7 +71,6 @@ export default function ParamedicoDashboard() {
   })
 
   const [pacienteCreado, setPacienteCreado] = useState<any>(null)
-  const [pacienteNN, setPacienteNN] = useState<any>(null)
 
   useEffect(() => {
     const currentUser = getSession()
@@ -84,6 +81,16 @@ export default function ParamedicoDashboard() {
     setUser(currentUser)
     cargarSolicitudes()
     obtenerUbicacion()
+    
+    // Verificar si hay mensaje de éxito en la URL (desde registro NN)
+    const params = new URLSearchParams(window.location.search)
+    const successMessage = params.get('success')
+    if (successMessage) {
+      setSuccess(successMessage)
+      setTimeout(() => setSuccess(""), 5000)
+      // Limpiar URL
+      window.history.replaceState({}, '', '/dashboard/paramedico')
+    }
     
     // Actualizar ubicación cada 30 segundos
     const locationInterval = setInterval(obtenerUbicacion, 30000)
@@ -155,36 +162,7 @@ export default function ParamedicoDashboard() {
     }
   }
 
-  const handleConfirmNN = async (data: any) => {
-    try {
-      setLoading(true)
-      setError("")
-      
-      const pacienteNNData = {
-        nombres: "Paciente",
-        apellidos: "NN",
-        sexo: data.sexo,
-        es_nn: true,
-        id_temporal: data.idTemporal,
-        edad_aproximada: parseInt(data.edadAproximada),
-        caracteristicas: data.caracteristicas || ""
-      }
-      
-      console.log('Enviando paciente NN:', pacienteNNData)
-      
-      const paciente = await pacientesAPI.crear(pacienteNNData)
-      setPacienteNN(paciente)
-      setPacienteCreado(paciente)
-      setSuccess("Paciente NN registrado exitosamente")
-      setModalNNOpen(false)
-      setTimeout(() => setSuccess(""), 5000)
-    } catch (err: any) {
-      console.error('Error al registrar paciente NN:', err)
-      setError(err.message || "Error al registrar paciente NN")
-    } finally {
-      setLoading(false)
-    }
-  }
+
 
   const handleRegistrarPaciente = async () => {
     try {
@@ -236,7 +214,7 @@ export default function ParamedicoDashboard() {
       setLoading(true)
       setError("")
       
-      if (!pacienteCreado && !pacienteNN) {
+      if (!pacienteCreado) {
         setError("Primero debe registrar un paciente")
         return
       }
@@ -264,7 +242,7 @@ export default function ParamedicoDashboard() {
       }
       
       const fichaCompleta = {
-        paciente: (pacienteCreado || pacienteNN).id,
+        paciente: pacienteCreado.id,
         paramedico: user.id,
         motivo_consulta: fichaData.motivo_consulta,
         circunstancias: fichaData.circunstancias,
@@ -344,8 +322,8 @@ export default function ParamedicoDashboard() {
       }
       console.log('✅ Validación campos OK')
       
-      console.log('🔍 Verificando paciente:', { pacienteCreado, pacienteNN })
-      if (!pacienteCreado && !pacienteNN) {
+      console.log('🔍 Verificando paciente:', { pacienteCreado })
+      if (!pacienteCreado) {
         console.log('❌ Validación fallida: no hay paciente registrado')
         setError("Primero debe registrar un paciente y crear una ficha")
         return
@@ -445,18 +423,19 @@ export default function ParamedicoDashboard() {
             <Button
               variant="outline"
               onClick={async () => {
-              try {
-                await authAPI.logout()
-              } catch (error) {
-                console.error('Error al cerrar sesión:', error)
-              } finally {
-                localStorage.removeItem("medical_system_user")
-                router.push("/")
-              }
-            }}
-          >
-            Cerrar Sesión
-          </Button>
+                try {
+                  await authAPI.logout()
+                } catch (error) {
+                  console.error('Error al cerrar sesión:', error)
+                } finally {
+                  localStorage.removeItem("medical_system_user")
+                  router.push("/")
+                }
+              }}
+            >
+              Cerrar Sesión
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -489,12 +468,11 @@ export default function ParamedicoDashboard() {
                       Complete los datos mínimos del paciente y signos vitales
                     </CardDescription>
                   </div>
-                  {(pacienteCreado || pacienteNN) && (
-                    <Button 
+                  {pacienteCreado && (
+                    <Button
                       variant="outline"
                       onClick={() => {
                         setPacienteCreado(null)
-                        setPacienteNN(null)
                         setPacienteData({
                           rut: "", nombres: "", apellidos: "", sexo: "", fecha_nacimiento: "", telefono: "", direccion: ""
                         })
@@ -537,30 +515,18 @@ export default function ParamedicoDashboard() {
                     </svg>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-amber-500">¿Paciente sin identificación?</p>
-                      <p className="text-xs text-slate-400">Use el botón "Paciente NN" para generar ID temporal</p>
+                      <p className="text-xs text-slate-400">Registre pacientes sin documentación con ID temporal</p>
                     </div>
-                    <Button onClick={() => setModalNNOpen(true)} className="bg-amber-600 hover:bg-amber-700 text-white">
-                      Paciente NN
+                    <Button 
+                      onClick={() => router.push('/dashboard/paramedico/registrar-nn')} 
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                      </svg>
+                      Registrar Paciente NN
                     </Button>
                   </div>
-
-                  {pacienteNN && (
-                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
-                      <p className="text-sm font-semibold text-emerald-500 mb-2">✓ Paciente NN Registrado</p>
-                      <p className="text-sm text-white">
-                        <strong>ID Temporal:</strong> {pacienteNN.idTemporal}
-                      </p>
-                      <p className="text-sm text-white">
-                        <strong>Sexo:</strong> {pacienteNN.sexo} • <strong>Edad aprox:</strong>{" "}
-                        {pacienteNN.edadAproximada} años
-                      </p>
-                      {pacienteNN.caracteristicas && (
-                        <p className="text-sm text-slate-300">
-                          <strong>Características:</strong> {pacienteNN.caracteristicas}
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
@@ -1084,7 +1050,6 @@ export default function ParamedicoDashboard() {
         </Tabs>
       </main>
 
-      <ModalPacienteNN open={modalNNOpen} onOpenChange={setModalNNOpen} onConfirm={handleConfirmNN} />
       <ModalBuscarPaciente open={modalBuscarOpen} onOpenChange={setModalBuscarOpen} />
     </div>
   )

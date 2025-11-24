@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI, solicitudesExamenesAPI } from "@/lib/api"
+import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI, solicitudesExamenesAPI, documentosAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ModalDiagnostico } from "@/components/modal-diagnostico"
 import { ModalExamenes } from "@/components/modal-examenes"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
+import { toast } from "@/hooks/use-toast"
 
 export default function MedicoDashboard() {
   const router = useRouter()
@@ -31,6 +32,8 @@ export default function MedicoDashboard() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [motivoRechazo, setMotivoRechazo] = useState<{ [key: number]: string }>({})
+  const [diagnosticoGuardado, setDiagnosticoGuardado] = useState<any>(null)
+  const [mostrarBotonesPDF, setMostrarBotonesPDF] = useState(false)
 
   useEffect(() => {
     const currentUser = getSession()
@@ -232,8 +235,12 @@ export default function MedicoDashboard() {
       console.log('✅ Diagnóstico guardado:', response)
       
       setSuccess("✅ Diagnóstico guardado exitosamente. Paciente dado de alta.")
-      setFichaSeleccionada(null)
-      setModalDiagnosticoOpen(false)
+      setDiagnosticoGuardado({ ...response, fichaId: fichaSeleccionada.id })
+      setMostrarBotonesPDF(true)
+      
+      // No cerrar el modal inmediatamente, mostrar botones de PDF
+      // setFichaSeleccionada(null)
+      // setModalDiagnosticoOpen(false)
       await cargarDatos()
       
       // Cambiar a tab de casos activos después de guardar
@@ -305,6 +312,95 @@ export default function MedicoDashboard() {
         {success && (
           <Alert className="mb-6 bg-emerald-500/10 border-emerald-500/30 text-emerald-500">
             <AlertDescription>{success}</AlertDescription>
+          </Alert>
+        )}
+        
+        {/* Botones de impresión de documentos PDF */}
+        {mostrarBotonesPDF && diagnosticoGuardado && (
+          <Alert className="mb-6 bg-blue-500/10 border-blue-500/30 text-blue-400">
+            <AlertDescription>
+              <div className="space-y-3">
+                <p className="font-semibold">📄 Documentos disponibles para imprimir:</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    className="bg-purple-600 hover:bg-purple-700"
+                    onClick={async () => {
+                      try {
+                        await documentosAPI.descargarFichaPDF(diagnosticoGuardado.fichaId)
+                        toast({ title: "PDF descargado", description: "Ficha completa descargada" })
+                      } catch (error) {
+                        toast({ title: "Error", description: "No se pudo descargar la ficha", variant: "destructive" })
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Ficha Completa
+                  </Button>
+                  <Button
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={async () => {
+                      try {
+                        await documentosAPI.descargarRecetaPDF(diagnosticoGuardado.fichaId)
+                        toast({ title: "PDF descargado", description: "Receta médica descargada" })
+                      } catch (error) {
+                        toast({ title: "Error", description: "No se pudo descargar la receta", variant: "destructive" })
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Receta Médica
+                  </Button>
+                  <Button
+                    className="bg-indigo-600 hover:bg-indigo-700"
+                    onClick={async () => {
+                      try {
+                        await documentosAPI.descargarOrdenExamenesPDF(diagnosticoGuardado.fichaId)
+                        toast({ title: "PDF descargado", description: "Orden de exámenes descargada" })
+                      } catch (error) {
+                        toast({ title: "Error", description: "No se pudo descargar la orden", variant: "destructive" })
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                    Orden de Exámenes
+                  </Button>
+                  <Button
+                    className="bg-teal-600 hover:bg-teal-700"
+                    onClick={async () => {
+                      try {
+                        await documentosAPI.descargarAltaPDF(diagnosticoGuardado.fichaId)
+                        toast({ title: "PDF descargado", description: "Alta médica descargada" })
+                      } catch (error) {
+                        toast({ title: "Error", description: "No se pudo descargar el alta", variant: "destructive" })
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Alta Médica
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full mt-2"
+                  onClick={() => {
+                    setMostrarBotonesPDF(false)
+                    setDiagnosticoGuardado(null)
+                    setModalDiagnosticoOpen(false)
+                    setFichaSeleccionada(null)
+                  }}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </AlertDescription>
           </Alert>
         )}
         
