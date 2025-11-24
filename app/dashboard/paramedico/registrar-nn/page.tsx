@@ -12,9 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/hooks/use-toast"
 
 export default function RegistrarPacienteNN() {
   const router = useRouter()
+  const { toast } = useToast()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -64,18 +66,84 @@ export default function RegistrarPacienteNN() {
     setError("")
 
     try {
+      // Validar rangos de signos vitales
+      const presionSist = parseInt(formData.presionSistolica)
+      const presionDiast = parseInt(formData.presionDiastolica)
+      const fc = parseInt(formData.frecuenciaCardiaca)
+      const fr = parseInt(formData.frecuenciaRespiratoria)
+      const temp = parseFloat(formData.temperatura)
+      const spo2 = parseInt(formData.saturacionOxigeno)
+      const glucosa = formData.glucosa ? parseInt(formData.glucosa) : null
+
+      // Validaciones con mensajes específicos
+      if (presionSist < 50 || presionSist > 250) {
+        const msg = "Presión Sistólica: El valor debe estar entre 50 y 250 mmHg"
+        setError("❌ " + msg)
+        toast({ title: "Error de Validación", description: msg, variant: "destructive" })
+        setLoading(false)
+        return
+      }
+      if (presionDiast < 30 || presionDiast > 150) {
+        const msg = "Presión Diastólica: El valor debe estar entre 30 y 150 mmHg"
+        setError("❌ " + msg)
+        toast({ title: "Error de Validación", description: msg, variant: "destructive" })
+        setLoading(false)
+        return
+      }
+      if (fc < 30 || fc > 250) {
+        const msg = "Frecuencia Cardíaca: El valor debe estar entre 30 y 250 lpm"
+        setError("❌ " + msg)
+        toast({ title: "Error de Validación", description: msg, variant: "destructive" })
+        setLoading(false)
+        return
+      }
+      if (fr < 5 || fr > 60) {
+        const msg = "Frecuencia Respiratoria: El valor debe estar entre 5 y 60 rpm"
+        setError("❌ " + msg)
+        toast({ title: "Error de Validación", description: msg, variant: "destructive" })
+        setLoading(false)
+        return
+      }
+      if (temp < 30 || temp > 45) {
+        const msg = "Temperatura: El valor debe estar entre 30 y 45 °C"
+        setError("❌ " + msg)
+        toast({ title: "Error de Validación", description: msg, variant: "destructive" })
+        setLoading(false)
+        return
+      }
+      if (spo2 < 50 || spo2 > 100) {
+        const msg = "Saturación de Oxígeno: El valor debe estar entre 50 y 100%"
+        setError("❌ " + msg)
+        toast({ title: "Error de Validación", description: msg, variant: "destructive" })
+        setLoading(false)
+        return
+      }
+      if (glucosa && (glucosa < 20 || glucosa > 600)) {
+        const msg = "Glucosa: El valor debe estar entre 20 y 600 mg/dL"
+        setError("❌ " + msg)
+        toast({ title: "Error de Validación", description: msg, variant: "destructive" })
+        setLoading(false)
+        return
+      }
+
+      // Generar nuevo ID temporal para cada intento (evita duplicados)
+      const fecha = new Date()
+      const año = fecha.getFullYear()
+      const numero = Math.floor(Math.random() * 9999) + 1
+      const nuevoIdTemporal = `NN-${año}-${String(numero).padStart(4, "0")}`
+
       // 1. Crear paciente NN
       const pacienteData = {
         rut: null,
         nombres: "NN",
-        apellidos: idTemporal,
+        apellidos: nuevoIdTemporal,
         edad: parseInt(formData.edadAproximada),
         sexo: formData.sexo,
         telefono: null,
         direccion: formData.caracteristicas || "Sin información",
         prevision: "Sin previsión",
         es_nn: true,
-        id_temporal: idTemporal,
+        id_temporal: nuevoIdTemporal,
       }
 
       console.log("📋 Creando paciente NN:", pacienteData)
@@ -87,8 +155,11 @@ export default function RegistrarPacienteNN() {
         paciente: paciente.id,
         paramedico: user.id,
         motivo_consulta: formData.motivoConsulta,
+        circunstancias: formData.caracteristicas || "Paciente NN sin información adicional",
+        sintomas: formData.motivoConsulta,
+        nivel_consciencia: formData.escala_glasgow || "15",
         prioridad: formData.prioridad,
-        estado: "en_evaluacion",
+        estado: "en_traslado",
       }
 
       console.log("📋 Creando ficha:", fichaData)
@@ -232,6 +303,9 @@ export default function RegistrarPacienteNN() {
                   <Input
                     type="number"
                     placeholder="Ej: 35"
+                    min="0"
+                    max="120"
+                    title="Rango: 0-120 años"
                     value={formData.edadAproximada}
                     onChange={(e) => setFormData({ ...formData, edadAproximada: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
@@ -304,6 +378,9 @@ export default function RegistrarPacienteNN() {
                     <Input
                       type="number"
                       placeholder="120"
+                      min="50"
+                      max="250"
+                      title="Rango: 50-250 mmHg"
                       value={formData.presionSistolica}
                       onChange={(e) => setFormData({ ...formData, presionSistolica: e.target.value })}
                       className="bg-slate-800 border-slate-700 text-white"
@@ -313,12 +390,16 @@ export default function RegistrarPacienteNN() {
                     <Input
                       type="number"
                       placeholder="80"
+                      min="30"
+                      max="150"
+                      title="Rango: 30-150 mmHg"
                       value={formData.presionDiastolica}
                       onChange={(e) => setFormData({ ...formData, presionDiastolica: e.target.value })}
                       className="bg-slate-800 border-slate-700 text-white"
                       required
                     />
                   </div>
+                  <p className="text-xs text-slate-400">💡 Sistólica: 50-250 mmHg • Diastólica: 30-150 mmHg</p>
                 </div>
 
                 <div className="space-y-2">
@@ -328,11 +409,15 @@ export default function RegistrarPacienteNN() {
                   <Input
                     type="number"
                     placeholder="75"
+                    min="30"
+                    max="250"
+                    title="Rango: 30-250 lpm"
                     value={formData.frecuenciaCardiaca}
                     onChange={(e) => setFormData({ ...formData, frecuenciaCardiaca: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
                     required
                   />
+                  <p className="text-xs text-slate-400">💡 Rango normal: 60-100 lpm</p>
                 </div>
 
                 <div className="space-y-2">
@@ -341,12 +426,16 @@ export default function RegistrarPacienteNN() {
                   </Label>
                   <Input
                     type="number"
-                    placeholder="Ej: 16"
+                    placeholder="16"
+                    min="5"
+                    max="60"
+                    title="Rango: 5-60 rpm"
                     value={formData.frecuenciaRespiratoria}
                     onChange={(e) => setFormData({ ...formData, frecuenciaRespiratoria: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
                     required
                   />
+                  <p className="text-xs text-slate-400">💡 Rango normal: 12-20 rpm</p>
                 </div>
 
                 <div className="space-y-2">
@@ -357,11 +446,15 @@ export default function RegistrarPacienteNN() {
                     type="number"
                     step="0.1"
                     placeholder="36.5"
+                    min="30"
+                    max="45"
+                    title="Rango: 30-45 °C"
                     value={formData.temperatura}
                     onChange={(e) => setFormData({ ...formData, temperatura: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
                     required
                   />
+                  <p className="text-xs text-slate-400">💡 Rango normal: 36-37.5 °C</p>
                 </div>
 
                 <div className="space-y-2">
@@ -370,12 +463,16 @@ export default function RegistrarPacienteNN() {
                   </Label>
                   <Input
                     type="number"
-                    placeholder="Ej: 98"
+                    placeholder="98"
+                    min="50"
+                    max="100"
+                    title="Rango: 50-100%"
                     value={formData.saturacionOxigeno}
                     onChange={(e) => setFormData({ ...formData, saturacionOxigeno: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
                     required
                   />
+                  <p className="text-xs text-slate-400">💡 Rango normal: 95-100%</p>
                 </div>
 
                 <div className="space-y-2">
@@ -383,10 +480,14 @@ export default function RegistrarPacienteNN() {
                   <Input
                     type="number"
                     placeholder="90"
+                    min="20"
+                    max="600"
+                    title="Rango: 20-600 mg/dL"
                     value={formData.glucosa}
                     onChange={(e) => setFormData({ ...formData, glucosa: e.target.value })}
                     className="bg-slate-800 border-slate-700 text-white"
                   />
+                  <p className="text-xs text-slate-400">💡 Rango normal: 70-110 mg/dL</p>
                 </div>
               </div>
 
