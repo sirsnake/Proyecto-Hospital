@@ -113,6 +113,37 @@ class PacienteViewSet(viewsets.ModelViewSet):
     serializer_class = PacienteSerializer
     permission_classes = [IsAuthenticated]
     
+    def perform_create(self, serializer):
+        """Registrar creación de paciente en auditoría"""
+        paciente = serializer.save()
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='crear',
+            modelo='Paciente',
+            objeto_id=paciente.id,
+            detalles={
+                'nombre': f"{paciente.nombres} {paciente.apellidos}",
+                'rut': paciente.rut or 'NN',
+                'es_nn': paciente.es_nn
+            },
+            ip_address=get_client_ip(self.request)
+        )
+    
+    def perform_update(self, serializer):
+        """Registrar actualización de paciente en auditoría"""
+        paciente = serializer.save()
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='editar',
+            modelo='Paciente',
+            objeto_id=paciente.id,
+            detalles={
+                'nombre': f"{paciente.nombres} {paciente.apellidos}",
+                'rut': paciente.rut or 'NN'
+            },
+            ip_address=get_client_ip(self.request)
+        )
+    
     def get_queryset(self):
         queryset = Paciente.objects.all()
         rut = self.request.query_params.get('rut', None)
@@ -470,6 +501,25 @@ class SignosVitalesViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(ficha_id=ficha_id)
         
         return queryset
+    
+    def perform_create(self, serializer):
+        """Registrar signos vitales en auditoría"""
+        signos = serializer.save()
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='crear',
+            modelo='SignosVitales',
+            objeto_id=signos.id,
+            detalles={
+                'ficha_id': signos.ficha.id,
+                'paciente': str(signos.ficha.paciente),
+                'fc': signos.frecuencia_cardiaca,
+                'pa': f"{signos.presion_sistolica}/{signos.presion_diastolica}",
+                'temp': str(signos.temperatura) if signos.temperatura else None,
+                'sat': signos.saturacion_oxigeno
+            },
+            ip_address=get_client_ip(self.request)
+        )
 
 
 class SolicitudMedicamentoViewSet(viewsets.ModelViewSet):
@@ -515,6 +565,21 @@ class SolicitudMedicamentoViewSet(viewsets.ModelViewSet):
         solicitud.fecha_respuesta = timezone.now()
         solicitud.save()
         
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='autorizar',
+            modelo='SolicitudMedicamento',
+            objeto_id=solicitud.id,
+            detalles={
+                'ficha_id': solicitud.ficha.id,
+                'medicamento': solicitud.medicamento,
+                'dosis': solicitud.dosis,
+                'paciente': str(solicitud.ficha.paciente)
+            },
+            ip_address=get_client_ip(request)
+        )
+        
         # Notificar al paramédico que solicitó
         if solicitud.paramedico:
             Notificacion.crear_notificacion(
@@ -556,6 +621,21 @@ class SolicitudMedicamentoViewSet(viewsets.ModelViewSet):
         solicitud.fecha_respuesta = timezone.now()
         solicitud.save()
         
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='rechazar',
+            modelo='SolicitudMedicamento',
+            objeto_id=solicitud.id,
+            detalles={
+                'ficha_id': solicitud.ficha.id,
+                'medicamento': solicitud.medicamento,
+                'motivo': solicitud.respuesta,
+                'paciente': str(solicitud.ficha.paciente)
+            },
+            ip_address=get_client_ip(request)
+        )
+        
         # Notificar al paramédico que solicitó
         if solicitud.paramedico:
             Notificacion.crear_notificacion(
@@ -585,6 +665,38 @@ class AnamnesisViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(ficha_id=ficha_id)
         
         return queryset
+    
+    def perform_create(self, serializer):
+        """Registrar anamnesis en auditoría"""
+        anamnesis = serializer.save()
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='crear',
+            modelo='Anamnesis',
+            objeto_id=anamnesis.id,
+            detalles={
+                'ficha_id': anamnesis.ficha.id,
+                'paciente': str(anamnesis.ficha.paciente),
+                'alergias': anamnesis.alergias[:50] if anamnesis.alergias else None,
+                'antecedentes': bool(anamnesis.antecedentes_personales)
+            },
+            ip_address=get_client_ip(self.request)
+        )
+    
+    def perform_update(self, serializer):
+        """Registrar actualización de anamnesis en auditoría"""
+        anamnesis = serializer.save()
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='editar',
+            modelo='Anamnesis',
+            objeto_id=anamnesis.id,
+            detalles={
+                'ficha_id': anamnesis.ficha.id,
+                'paciente': str(anamnesis.ficha.paciente)
+            },
+            ip_address=get_client_ip(self.request)
+        )
 
 
 class TriageViewSet(viewsets.ModelViewSet):
@@ -607,6 +719,21 @@ class TriageViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         triage = serializer.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='crear',
+            modelo='Triage',
+            objeto_id=triage.id,
+            detalles={
+                'ficha_id': triage.ficha.id,
+                'paciente': str(triage.ficha.paciente),
+                'nivel_esi': triage.nivel_esi,
+                'motivo': triage.motivo_consulta_triage[:100] if triage.motivo_consulta_triage else None
+            },
+            ip_address=get_client_ip(request)
+        )
         
         # Obtener información del paciente
         ficha = triage.ficha
@@ -706,11 +833,26 @@ class DiagnosticoViewSet(viewsets.ModelViewSet):
         """Crear diagnóstico y cambiar estado según tipo de alta"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        diagnostico = serializer.save()
+        
+        # Registrar en auditoría
+        tipo_alta = request.data.get('tipo_alta', 'domicilio')
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='crear',
+            modelo='Diagnostico',
+            objeto_id=diagnostico.id,
+            detalles={
+                'ficha_id': diagnostico.ficha.id,
+                'paciente': str(diagnostico.ficha.paciente),
+                'diagnostico_principal': diagnostico.diagnostico_principal[:100] if diagnostico.diagnostico_principal else None,
+                'tipo_alta': tipo_alta
+            },
+            ip_address=get_client_ip(request)
+        )
         
         # Obtener tipo de alta y cambiar estado de la ficha
         ficha_id = request.data.get('ficha')
-        tipo_alta = request.data.get('tipo_alta', 'domicilio')
         
         if ficha_id:
             try:
@@ -808,6 +950,21 @@ class SolicitudExamenViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         solicitud = serializer.save()
         
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='crear',
+            modelo='SolicitudExamen',
+            objeto_id=solicitud.id,
+            detalles={
+                'ficha_id': solicitud.ficha.id,
+                'tipo_examen': solicitud.tipo_examen,
+                'prioridad': solicitud.prioridad,
+                'paciente': str(solicitud.ficha.paciente)
+            },
+            ip_address=get_client_ip(request)
+        )
+        
         # Notificar a TENS sobre nuevo examen solicitado
         paciente = solicitud.ficha.paciente
         paciente_nombre = f"{paciente.nombres} {paciente.apellidos}" if not paciente.es_nn else f"Paciente NN ({paciente.id_temporal})"
@@ -851,6 +1008,21 @@ class SolicitudExamenViewSet(viewsets.ModelViewSet):
         solicitud = self.get_object()
         solicitud.estado = 'en_proceso'
         solicitud.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='editar',
+            modelo='SolicitudExamen',
+            objeto_id=solicitud.id,
+            detalles={
+                'ficha_id': solicitud.ficha.id,
+                'tipo_examen': solicitud.tipo_examen,
+                'estado': 'en_proceso'
+            },
+            ip_address=get_client_ip(request)
+        )
+        
         serializer = self.get_serializer(solicitud)
         return Response(serializer.data)
     
@@ -866,6 +1038,20 @@ class SolicitudExamenViewSet(viewsets.ModelViewSet):
         if observaciones:
             solicitud.observaciones = observaciones
         solicitud.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='completar',
+            modelo='SolicitudExamen',
+            objeto_id=solicitud.id,
+            detalles={
+                'ficha_id': solicitud.ficha.id,
+                'tipo_examen': solicitud.tipo_examen,
+                'tiene_resultados': bool(resultados)
+            },
+            ip_address=get_client_ip(request)
+        )
         
         # Notificar al médico que solicitó el examen
         if solicitud.medico:
@@ -914,6 +1100,20 @@ class DocumentosPDFViewSet(viewsets.ViewSet):
             html = HTML(string=html_string)
             pdf_file = html.write_pdf()
             
+            # Registrar en auditoría
+            AuditLog.objects.create(
+                usuario=request.user,
+                accion='generar_pdf',
+                modelo='FichaEmergencia',
+                objeto_id=ficha.id,
+                detalles={
+                    'tipo_documento': 'ficha_emergencia',
+                    'paciente_id': ficha.paciente.id,
+                    'paciente_nombre': f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"NN-{ficha.paciente.id_temporal}",
+                },
+                ip_address=get_client_ip(request)
+            )
+            
             response = HttpResponse(pdf_file, content_type='application/pdf')
             response['Content-Disposition'] = f'inline; filename="ficha_{ficha_id}.pdf"'
             return response
@@ -941,6 +1141,21 @@ class DocumentosPDFViewSet(viewsets.ViewSet):
             html_string = render_to_string('pdf/receta_medica.html', context)
             html = HTML(string=html_string)
             pdf_file = html.write_pdf()
+            
+            # Registrar en auditoría
+            AuditLog.objects.create(
+                usuario=request.user,
+                accion='generar_pdf',
+                modelo='Diagnostico',
+                objeto_id=diagnostico.id,
+                detalles={
+                    'tipo_documento': 'receta_medica',
+                    'ficha_id': ficha.id,
+                    'paciente_nombre': f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"NN-{ficha.paciente.id_temporal}",
+                    'medico': f"{diagnostico.medico.first_name} {diagnostico.medico.last_name}",
+                },
+                ip_address=get_client_ip(request)
+            )
             
             response = HttpResponse(pdf_file, content_type='application/pdf')
             response['Content-Disposition'] = f'inline; filename="receta_{ficha_id}.pdf"'
@@ -987,6 +1202,21 @@ class DocumentosPDFViewSet(viewsets.ViewSet):
             html = HTML(string=html_string)
             pdf_file = html.write_pdf()
             
+            # Registrar en auditoría
+            AuditLog.objects.create(
+                usuario=request.user,
+                accion='generar_pdf',
+                modelo='SolicitudExamen',
+                objeto_id=ficha.id,
+                detalles={
+                    'tipo_documento': 'orden_examenes',
+                    'ficha_id': ficha.id,
+                    'paciente_nombre': f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"NN-{ficha.paciente.id_temporal}",
+                    'cantidad_examenes': len(examenes_list),
+                },
+                ip_address=get_client_ip(request)
+            )
+            
             response = HttpResponse(pdf_file, content_type='application/pdf')
             response['Content-Disposition'] = f'inline; filename="orden_examenes_{ficha_id}.pdf"'
             return response
@@ -1024,6 +1254,20 @@ class DocumentosPDFViewSet(viewsets.ViewSet):
             html_string = render_to_string('pdf/alta_medica.html', context)
             html = HTML(string=html_string)
             pdf_file = html.write_pdf()
+            
+            # Registrar en auditoría
+            AuditLog.objects.create(
+                usuario=request.user,
+                accion='generar_pdf',
+                modelo='FichaEmergencia',
+                objeto_id=ficha.id,
+                detalles={
+                    'tipo_documento': 'alta_medica',
+                    'ficha_id': ficha.id,
+                    'paciente_nombre': f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"NN-{ficha.paciente.id_temporal}",
+                },
+                ip_address=get_client_ip(request)
+            )
             
             response = HttpResponse(pdf_file, content_type='application/pdf')
             response['Content-Disposition'] = f'inline; filename="alta_{ficha_id}.pdf"'
@@ -1563,7 +1807,37 @@ class ArchivoAdjuntoViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-fecha_subida')
     
     def perform_create(self, serializer):
-        serializer.save()
+        archivo = serializer.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='crear',
+            modelo='ArchivoAdjunto',
+            objeto_id=archivo.id,
+            detalles={
+                'nombre': archivo.nombre_original,
+                'tipo': archivo.tipo,
+                'ficha_id': archivo.ficha_id,
+            },
+            ip_address=get_client_ip(self.request)
+        )
+    
+    def perform_destroy(self, instance):
+        # Registrar en auditoría antes de eliminar
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='eliminar',
+            modelo='ArchivoAdjunto',
+            objeto_id=instance.id,
+            detalles={
+                'nombre': instance.nombre_original,
+                'tipo': instance.tipo,
+                'ficha_id': instance.ficha_id,
+            },
+            ip_address=get_client_ip(self.request)
+        )
+        instance.delete()
     
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload(self, request):
@@ -1571,6 +1845,22 @@ class ArchivoAdjuntoViewSet(viewsets.ModelViewSet):
         serializer = ArchivoAdjuntoUploadSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             archivo = serializer.save()
+            
+            # Registrar en auditoría
+            AuditLog.objects.create(
+                usuario=request.user,
+                accion='crear',
+                modelo='ArchivoAdjunto',
+                objeto_id=archivo.id,
+                detalles={
+                    'nombre': archivo.nombre_original,
+                    'tipo': archivo.tipo,
+                    'ficha_id': archivo.ficha_id,
+                    'metodo': 'upload_action',
+                },
+                ip_address=get_client_ip(request)
+            )
+            
             return Response(ArchivoAdjuntoSerializer(archivo).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -1659,6 +1949,20 @@ class MensajeChatViewSet(viewsets.ModelViewSet):
                 ficha=ficha,
                 prioridad='media'
             )
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='crear',
+            modelo='MensajeChat',
+            objeto_id=mensaje.id,
+            detalles={
+                'ficha_id': ficha.id,
+                'contenido_preview': mensaje.contenido[:100] if len(mensaje.contenido) > 100 else mensaje.contenido,
+                'paciente': paciente_nombre,
+            },
+            ip_address=get_client_ip(request)
+        )
         
         # Devolver con el serializer de lectura para incluir autor completo
         read_serializer = MensajeChatSerializer(mensaje, context={'request': request})
