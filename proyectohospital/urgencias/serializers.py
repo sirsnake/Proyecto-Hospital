@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import (Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, 
-                     Anamnesis, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama,
+                     Anamnesis, Triage, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama,
                      ArchivoAdjunto, MensajeChat, Notificacion)
 
 
@@ -98,7 +98,7 @@ class SignosVitalesSerializer(serializers.ModelSerializer):
     class Meta:
         model = SignosVitales
         fields = '__all__'
-        read_only_fields = ['id', 'timestamp']
+        read_only_fields = ['id', 'timestamp', 'escala_glasgow']  # Glasgow total se calcula automáticamente
     
     def validate_presion_sistolica(self, value):
         if value and (value < 60 or value > 250):
@@ -135,9 +135,19 @@ class SignosVitalesSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('La glucosa debe estar entre 20 y 600 mg/dL')
         return value
     
-    def validate_escala_glasgow(self, value):
-        if value and (value < 3 or value > 15):
-            raise serializers.ValidationError('La escala de Glasgow debe estar entre 3 y 15')
+    def validate_glasgow_ocular(self, value):
+        if value and (value < 1 or value > 4):
+            raise serializers.ValidationError('La respuesta ocular debe estar entre 1 y 4')
+        return value
+    
+    def validate_glasgow_verbal(self, value):
+        if value and (value < 1 or value > 5):
+            raise serializers.ValidationError('La respuesta verbal debe estar entre 1 y 5')
+        return value
+    
+    def validate_glasgow_motor(self, value):
+        if value and (value < 1 or value > 6):
+            raise serializers.ValidationError('La respuesta motora debe estar entre 1 y 6')
         return value
     
     def validate_eva(self, value):
@@ -152,7 +162,7 @@ class SignosVitalesNestedSerializer(serializers.ModelSerializer):
     class Meta:
         model = SignosVitales
         exclude = ['ficha']  # ficha se asigna automáticamente en la creación anidada
-        read_only_fields = ['id', 'timestamp']
+        read_only_fields = ['id', 'timestamp', 'escala_glasgow']  # Glasgow total se calcula automáticamente
     
     def validate_presion_sistolica(self, value):
         if value and (value < 60 or value > 250):
@@ -189,9 +199,19 @@ class SignosVitalesNestedSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('La glucosa debe estar entre 20 y 600 mg/dL')
         return value
     
-    def validate_escala_glasgow(self, value):
-        if value and (value < 3 or value > 15):
-            raise serializers.ValidationError('La escala de Glasgow debe estar entre 3 y 15')
+    def validate_glasgow_ocular(self, value):
+        if value and (value < 1 or value > 4):
+            raise serializers.ValidationError('La respuesta ocular debe estar entre 1 y 4')
+        return value
+    
+    def validate_glasgow_verbal(self, value):
+        if value and (value < 1 or value > 5):
+            raise serializers.ValidationError('La respuesta verbal debe estar entre 1 y 5')
+        return value
+    
+    def validate_glasgow_motor(self, value):
+        if value and (value < 1 or value > 6):
+            raise serializers.ValidationError('La respuesta motora debe estar entre 1 y 6')
         return value
     
     def validate_eva(self, value):
@@ -202,11 +222,40 @@ class SignosVitalesNestedSerializer(serializers.ModelSerializer):
 
 class SignosVitalesCreateSerializer(serializers.ModelSerializer):
     """Serializer para crear signos vitales directamente (con ficha)"""
+    # Hacer que todos los campos de signos sean opcionales excepto ficha
+    presion_sistolica = serializers.IntegerField(required=False, allow_null=True)
+    presion_diastolica = serializers.IntegerField(required=False, allow_null=True)
+    frecuencia_cardiaca = serializers.IntegerField(required=False, allow_null=True)
+    frecuencia_respiratoria = serializers.IntegerField(required=False, allow_null=True)
+    saturacion_o2 = serializers.IntegerField(required=False, allow_null=True)
+    temperatura = serializers.DecimalField(max_digits=4, decimal_places=1, required=False, allow_null=True)
+    glucosa = serializers.IntegerField(required=False, allow_null=True)
+    glasgow_ocular = serializers.IntegerField(required=False, allow_null=True)
+    glasgow_verbal = serializers.IntegerField(required=False, allow_null=True)
+    glasgow_motor = serializers.IntegerField(required=False, allow_null=True)
+    eva = serializers.IntegerField(required=False, allow_null=True)
     
     class Meta:
         model = SignosVitales
         fields = '__all__'
-        read_only_fields = ['id', 'timestamp']
+        read_only_fields = ['id', 'timestamp', 'escala_glasgow']
+    
+    def create(self, validated_data):
+        # Establecer valores por defecto para campos no proporcionados
+        defaults = {
+            'presion_sistolica': 120,
+            'presion_diastolica': 80,
+            'frecuencia_cardiaca': 75,
+            'frecuencia_respiratoria': 16,
+            'saturacion_o2': 98,
+            'temperatura': 36.5,
+        }
+        
+        for field, default_value in defaults.items():
+            if validated_data.get(field) is None:
+                validated_data[field] = default_value
+        
+        return super().create(validated_data)
 
 
 class SolicitudMedicamentoSerializer(serializers.ModelSerializer):
@@ -230,24 +279,69 @@ class AnamnesisSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'fecha_creacion', 'fecha_actualizacion']
 
 
+class TriageSerializer(serializers.ModelSerializer):
+    """Serializer para triage hospitalario"""
+    realizado_por_nombre = serializers.CharField(source='realizado_por.get_full_name', read_only=True)
+    nivel_esi_display = serializers.CharField(source='get_nivel_esi_display', read_only=True)
+    color_manchester_display = serializers.CharField(source='get_color_manchester_display', read_only=True)
+    color_prioridad = serializers.SerializerMethodField()
+    tiempo_atencion_maximo = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Triage
+        fields = '__all__'
+        read_only_fields = ['id', 'fecha_triage']
+    
+    def get_color_prioridad(self, obj):
+        return obj.get_color_prioridad()
+    
+    def get_tiempo_atencion_maximo(self, obj):
+        return obj.get_tiempo_atencion_maximo()
+
+
 class DiagnosticoSerializer(serializers.ModelSerializer):
     """Serializer para diagnósticos"""
     medico_nombre = serializers.CharField(source='medico.get_full_name', read_only=True)
+    tipo_alta_display = serializers.CharField(source='get_tipo_alta_display', read_only=True)
     
     class Meta:
         model = Diagnostico
         fields = '__all__'
-        read_only_fields = ['id', 'fecha_diagnostico']
+        read_only_fields = ['id', 'fecha_diagnostico', 'codigo_diagnostico']
 
 
 class SolicitudExamenSerializer(serializers.ModelSerializer):
     """Serializer para solicitudes de exámenes"""
     medico_nombre = serializers.CharField(source='medico.get_full_name', read_only=True)
+    ficha = serializers.SerializerMethodField()
     
     class Meta:
         model = SolicitudExamen
         fields = '__all__'
         read_only_fields = ['id', 'fecha_solicitud', 'fecha_actualizacion']
+    
+    def get_ficha(self, obj):
+        if obj.ficha:
+            return {
+                'id': obj.ficha.id,
+                'paciente': {
+                    'id': obj.ficha.paciente.id,
+                    'nombres': obj.ficha.paciente.nombres,
+                    'apellidos': obj.ficha.paciente.apellidos,
+                    'es_nn': obj.ficha.paciente.es_nn,
+                    'id_temporal': obj.ficha.paciente.id_temporal if obj.ficha.paciente.es_nn else None,
+                } if obj.ficha.paciente else None
+            }
+        return None
+
+
+class CamaSimpleSerializer(serializers.ModelSerializer):
+    """Serializer simple para camas (usado en ficha)"""
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    
+    class Meta:
+        model = Cama
+        fields = ['id', 'numero', 'tipo', 'tipo_display', 'piso', 'sala']
 
 
 class FichaEmergenciaSerializer(serializers.ModelSerializer):
@@ -259,11 +353,21 @@ class FichaEmergenciaSerializer(serializers.ModelSerializer):
         write_only=True
     )
     paramedico_nombre = serializers.CharField(source='paramedico.get_full_name', read_only=True)
+    medico_asignado_nombre = serializers.CharField(source='medico_asignado.get_full_name', read_only=True, allow_null=True)
+    medico_asignado_id = serializers.PrimaryKeyRelatedField(
+        queryset=Usuario.objects.filter(rol='medico'),
+        source='medico_asignado',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
     signos_vitales = SignosVitalesSerializer(many=True, read_only=True)
     solicitudes_medicamentos = SolicitudMedicamentoSerializer(many=True, read_only=True)
     solicitudes_examenes = SolicitudExamenSerializer(many=True, read_only=True)
     anamnesis = AnamnesisSerializer(read_only=True)
+    triage = TriageSerializer(read_only=True)
     diagnostico = DiagnosticoSerializer(read_only=True)
+    cama_asignada = CamaSimpleSerializer(read_only=True)
     
     class Meta:
         model = FichaEmergencia
@@ -448,6 +552,7 @@ class MensajeChatCreateSerializer(serializers.ModelSerializer):
     """Serializer para crear mensajes de chat"""
     ficha_id = serializers.IntegerField(write_only=True, required=False)
     archivo_adjunto_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    contenido = serializers.CharField(required=False, allow_blank=True, default="")
     
     class Meta:
         model = MensajeChat
@@ -465,12 +570,24 @@ class MensajeChatCreateSerializer(serializers.ModelSerializer):
             except FichaEmergencia.DoesNotExist:
                 raise serializers.ValidationError({'ficha_id': 'Ficha no encontrada'})
         
-        # Permitir archivo_adjunto_id como alternativa
-        if 'archivo_adjunto_id' in data and data['archivo_adjunto_id']:
+        # Permitir archivo_adjunto_id como alternativa (solo si tiene valor)
+        archivo_id = data.get('archivo_adjunto_id')
+        if archivo_id is not None and archivo_id:
             try:
-                data['archivo_adjunto'] = ArchivoAdjunto.objects.get(id=data['archivo_adjunto_id'])
+                data['archivo_adjunto'] = ArchivoAdjunto.objects.get(id=archivo_id)
             except ArchivoAdjunto.DoesNotExist:
                 raise serializers.ValidationError({'archivo_adjunto_id': 'Archivo no encontrado'})
+        
+        # Asegurarse de tener contenido o archivo (pero permitir contenido vacío si hay archivo)
+        contenido = data.get('contenido', '').strip()
+        tiene_archivo = data.get('archivo_adjunto') is not None or (archivo_id is not None and archivo_id)
+        
+        if not contenido and not tiene_archivo:
+            raise serializers.ValidationError({'contenido': 'Debe proporcionar contenido o un archivo'})
+        
+        # Si hay archivo pero no contenido, poner un mensaje por defecto
+        if tiene_archivo and not contenido:
+            data['contenido'] = '(Archivo adjunto)'
         
         return data
     

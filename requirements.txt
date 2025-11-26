@@ -1,0 +1,22 @@
+# Django y Framework
+Django>=5.2.8
+djangorestframework>=3.15.0
+
+# Base de datos MySQL
+mysqlclient>=2.2.0
+
+# CORS para frontend
+django-cors-headers>=4.3.0
+
+# Generación de PDFs
+weasyprint>=62.0
+
+# Dependencias de WeasyPrint (se instalan automáticamente pero las listamos)
+Pillow>=10.0.0
+cssselect2>=0.7.0
+tinycss2>=1.2.0
+fonttools>=4.0.0
+pydyf>=0.8.0
+
+# Utilidades
+python-dotenv>=1.0.0

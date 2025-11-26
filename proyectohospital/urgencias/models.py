@@ -35,6 +35,16 @@ class Paciente(models.Model):
         ('Femenino', 'Femenino'),
     ]
     
+    PREVISION_CHOICES = [
+        ('FONASA A', 'FONASA A'),
+        ('FONASA B', 'FONASA B'),
+        ('FONASA C', 'FONASA C'),
+        ('FONASA D', 'FONASA D'),
+        ('ISAPRE', 'ISAPRE'),
+        ('PARTICULAR', 'Particular'),
+        ('OTRO', 'Otro'),
+    ]
+    
     rut = models.CharField(max_length=12, unique=True, blank=True, null=True)
     nombres = models.CharField(max_length=100)
     apellidos = models.CharField(max_length=100)
@@ -42,6 +52,9 @@ class Paciente(models.Model):
     sexo = models.CharField(max_length=10, choices=SEXO_CHOICES)
     telefono = models.CharField(max_length=15, blank=True, null=True)
     direccion = models.TextField(blank=True, null=True)
+    prevision = models.CharField(max_length=20, choices=PREVISION_CHOICES, blank=True, null=True)
+    acompanante_nombre = models.CharField(max_length=200, blank=True, null=True)
+    acompanante_telefono = models.CharField(max_length=15, blank=True, null=True)
     
     # Campos para pacientes NN (sin identificación)
     es_nn = models.BooleanField(default=False)
@@ -56,6 +69,23 @@ class Paciente(models.Model):
         verbose_name_plural = 'Pacientes'
         ordering = ['-fecha_registro']
     
+    @property
+    def nombre_completo(self):
+        return f"{self.nombres} {self.apellidos}"
+    
+    @property
+    def edad(self):
+        if self.es_nn:
+            return self.edad_aproximada
+        if self.fecha_nacimiento:
+            from datetime import date
+            today = date.today()
+            years = today.year - self.fecha_nacimiento.year
+            if today.month < self.fecha_nacimiento.month or (today.month == self.fecha_nacimiento.month and today.day < self.fecha_nacimiento.day):
+                years -= 1
+            return years
+        return None
+    
     def __str__(self):
         if self.es_nn:
             return f"Paciente NN ({self.id_temporal})"
@@ -68,6 +98,11 @@ class FichaEmergencia(models.Model):
         ('en_ruta', 'En Ruta'),
         ('en_hospital', 'En Hospital'),
         ('atendido', 'Atendido'),
+        ('dado_de_alta', 'Dado de Alta'),
+        ('hospitalizado', 'Hospitalizado'),
+        ('uci', 'UCI'),
+        ('derivado', 'Derivado'),
+        ('fallecido', 'Fallecido'),
     ]
     
     PRIORIDAD_CHOICES = [
@@ -80,6 +115,7 @@ class FichaEmergencia(models.Model):
     
     paciente = models.ForeignKey(Paciente, on_delete=models.CASCADE, related_name='fichas')
     paramedico = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='fichas_paramedico')
+    medico_asignado = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='fichas_medico', limit_choices_to={'rol': 'medico'})
     
     motivo_consulta = models.TextField()
     circunstancias = models.TextField()
@@ -113,11 +149,23 @@ class SignosVitales(models.Model):
     saturacion_o2 = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)])
     temperatura = models.DecimalField(max_digits=4, decimal_places=1)
     glucosa = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(0)])
-    escala_glasgow = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(3), MaxValueValidator(15)])
+    
+    # Glasgow desglosado (valores por defecto para registros existentes)
+    glasgow_ocular = models.IntegerField(default=4, validators=[MinValueValidator(1), MaxValueValidator(4)], help_text="Respuesta ocular (1-4)")
+    glasgow_verbal = models.IntegerField(default=5, validators=[MinValueValidator(1), MaxValueValidator(5)], help_text="Respuesta verbal (1-5)")
+    glasgow_motor = models.IntegerField(default=6, validators=[MinValueValidator(1), MaxValueValidator(6)], help_text="Respuesta motora (1-6)")
+    escala_glasgow = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(3), MaxValueValidator(15)], help_text="Calculado automáticamente")
+    
     eva = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(0), MaxValueValidator(10)], help_text="Escala de dolor 0-10")
     
     ubicacion_gps = models.CharField(max_length=100, blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+    
+    def save(self, *args, **kwargs):
+        # Calcular Glasgow total automáticamente
+        if self.glasgow_ocular and self.glasgow_verbal and self.glasgow_motor:
+            self.escala_glasgow = self.glasgow_ocular + self.glasgow_verbal + self.glasgow_motor
+        super().save(*args, **kwargs)
     
     class Meta:
         verbose_name = 'Signos Vitales'
@@ -182,15 +230,130 @@ class Anamnesis(models.Model):
         return f"Anamnesis - Ficha #{self.ficha.id}"
 
 
+class Triage(models.Model):
+    """
+    Triage hospitalario formal realizado al ingreso del paciente.
+    Usa escala ESI (Emergency Severity Index) de 5 niveles.
+    """
+    
+    # Escala ESI (Emergency Severity Index)
+    NIVEL_ESI_CHOICES = [
+        (1, 'ESI 1 - Resucitación (inmediato)'),
+        (2, 'ESI 2 - Emergencia (< 10 min)'),
+        (3, 'ESI 3 - Urgencia (< 30 min)'),
+        (4, 'ESI 4 - Menos urgente (< 60 min)'),
+        (5, 'ESI 5 - No urgente (< 120 min)'),
+    ]
+    
+    # Escala Manchester (alternativa visual por colores)
+    COLOR_MANCHESTER_CHOICES = [
+        ('rojo', 'Rojo - Inmediato'),
+        ('naranja', 'Naranja - Muy Urgente'),
+        ('amarillo', 'Amarillo - Urgente'),
+        ('verde', 'Verde - Normal'),
+        ('azul', 'Azul - No Urgente'),
+    ]
+    
+    VIA_AEREA_CHOICES = [
+        ('permeable', 'Permeable'),
+        ('comprometida', 'Comprometida'),
+        ('obstruida', 'Obstruida'),
+    ]
+    
+    ficha = models.OneToOneField(FichaEmergencia, on_delete=models.CASCADE, related_name='triage')
+    realizado_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='triages_realizados')
+    
+    # Clasificación
+    nivel_esi = models.IntegerField(choices=NIVEL_ESI_CHOICES, help_text="Nivel de gravedad ESI 1-5")
+    color_manchester = models.CharField(max_length=10, choices=COLOR_MANCHESTER_CHOICES, blank=True, null=True)
+    
+    # Evaluación inicial rápida
+    motivo_consulta_triage = models.TextField(help_text="Motivo de consulta según el paciente/acompañante")
+    tiempo_inicio_sintomas = models.CharField(max_length=100, blank=True, null=True, help_text="Ej: 2 horas, 3 días")
+    
+    # Estado general
+    via_aerea = models.CharField(max_length=20, choices=VIA_AEREA_CHOICES, default='permeable')
+    respiracion_normal = models.BooleanField(default=True)
+    circulacion_normal = models.BooleanField(default=True)
+    estado_consciencia = models.CharField(max_length=100, help_text="Alerta, Responde a voz, Responde a dolor, No responde (AVDN)")
+    
+    # Dolor
+    dolor_presente = models.BooleanField(default=False)
+    escala_dolor = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(0), MaxValueValidator(10)])
+    localizacion_dolor = models.CharField(max_length=200, blank=True, null=True)
+    
+    # Signos de alarma
+    fiebre_alta = models.BooleanField(default=False, help_text="Temperatura > 38.5°C")
+    dificultad_respiratoria = models.BooleanField(default=False)
+    dolor_toracico = models.BooleanField(default=False)
+    alteracion_neurologica = models.BooleanField(default=False)
+    sangrado_activo = models.BooleanField(default=False)
+    trauma_mayor = models.BooleanField(default=False)
+    
+    # Recursos estimados (para ESI 3-5)
+    recursos_necesarios = models.IntegerField(default=0, help_text="Número estimado de recursos/procedimientos")
+    
+    # Observaciones
+    observaciones = models.TextField(blank=True, null=True)
+    
+    # Timestamps
+    fecha_triage = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'Triage'
+        verbose_name_plural = 'Triages'
+        ordering = ['-fecha_triage']
+    
+    def __str__(self):
+        return f"Triage ESI-{self.nivel_esi} - Ficha #{self.ficha.id}"
+    
+    def get_color_prioridad(self):
+        """Retorna el color de prioridad basado en el nivel ESI"""
+        colores = {
+            1: '#FF0000',  # Rojo
+            2: '#FF8C00',  # Naranja
+            3: '#FFD700',  # Amarillo
+            4: '#32CD32',  # Verde
+            5: '#4169E1',  # Azul
+        }
+        return colores.get(self.nivel_esi, '#808080')
+    
+    def get_tiempo_atencion_maximo(self):
+        """Retorna el tiempo máximo de espera según ESI"""
+        tiempos = {
+            1: 'Inmediato',
+            2: '10 minutos',
+            3: '30 minutos',
+            4: '60 minutos',
+            5: '120 minutos',
+        }
+        return tiempos.get(self.nivel_esi, 'No definido')
+
+
 class Diagnostico(models.Model):
     """Diagnóstico médico final"""
+    TIPO_ALTA_CHOICES = [
+        ('domicilio', 'Alta a Domicilio'),
+        ('hospitalizacion', 'Hospitalización'),
+        ('uci', 'Ingreso a UCI'),
+        ('derivacion', 'Derivación a Especialista'),
+        ('voluntaria', 'Alta Voluntaria'),
+        ('fallecido', 'Fallecido'),
+    ]
+    
     ficha = models.OneToOneField(FichaEmergencia, on_delete=models.CASCADE, related_name='diagnostico')
     medico = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='diagnosticos_realizados')
     
+    codigo_diagnostico = models.CharField(max_length=20, unique=True, blank=True, null=True, help_text="Código único auto-generado DX-YYYYMMDD-XXXX")
     diagnostico_cie10 = models.CharField(max_length=100, help_text="Código CIE-10")
     descripcion = models.TextField()
     indicaciones_medicas = models.TextField()
     medicamentos_prescritos = models.TextField(blank=True, null=True)
+    
+    # Nuevo campo para tipo de alta
+    tipo_alta = models.CharField(max_length=20, choices=TIPO_ALTA_CHOICES, default='domicilio')
+    destino_derivacion = models.CharField(max_length=200, blank=True, null=True, help_text="Hospital o especialista destino si es derivación")
+    hora_fallecimiento = models.DateTimeField(blank=True, null=True, help_text="Hora de fallecimiento si aplica")
     
     fecha_diagnostico = models.DateTimeField(auto_now_add=True)
     
@@ -199,8 +362,36 @@ class Diagnostico(models.Model):
         verbose_name_plural = 'Diagnósticos'
         ordering = ['-fecha_diagnostico']
     
+    def save(self, *args, **kwargs):
+        if not self.codigo_diagnostico:
+            self.codigo_diagnostico = self.generar_codigo_unico()
+        super().save(*args, **kwargs)
+    
+    @classmethod
+    def generar_codigo_unico(cls):
+        """Genera un código único en formato DX-YYYYMMDD-XXXX"""
+        from django.utils import timezone
+        fecha_hoy = timezone.now().strftime('%Y%m%d')
+        prefijo = f"DX-{fecha_hoy}-"
+        
+        # Buscar el último diagnóstico del día
+        ultimo = cls.objects.filter(
+            codigo_diagnostico__startswith=prefijo
+        ).order_by('-codigo_diagnostico').first()
+        
+        if ultimo and ultimo.codigo_diagnostico:
+            try:
+                ultimo_numero = int(ultimo.codigo_diagnostico.split('-')[-1])
+                nuevo_numero = ultimo_numero + 1
+            except (ValueError, IndexError):
+                nuevo_numero = 1
+        else:
+            nuevo_numero = 1
+        
+        return f"{prefijo}{nuevo_numero:04d}"
+    
     def __str__(self):
-        return f"Diagnóstico {self.diagnostico_cie10} - Ficha #{self.ficha.id}"
+        return f"Diagnóstico {self.codigo_diagnostico or self.diagnostico_cie10} - Ficha #{self.ficha.id}"
 
 
 class SolicitudExamen(models.Model):
@@ -266,17 +457,21 @@ class ConfiguracionHospital(models.Model):
 
 
 class Cama(models.Model):
-    """Modelo para gestión de camas del hospital"""
+    """Modelo para gestión de camas/boxes del hospital"""
     TIPO_CHOICES = [
-        ('general', 'General'),
-        ('uci', 'UCI'),
-        ('emergencia', 'Emergencia'),
+        ('box', 'Box de Atención'),
+        ('camilla', 'Camilla'),
+        ('cama_general', 'Cama General'),
+        ('cama_uci', 'Cama UCI'),
+        ('sala_emergencia', 'Sala de Emergencia'),
+        ('sala_espera', 'Sala de Espera'),
     ]
     
     ESTADO_CHOICES = [
         ('disponible', 'Disponible'),
         ('ocupada', 'Ocupada'),
-        ('mantenimiento', 'Mantenimiento'),
+        ('reservada', 'Reservada'),
+        ('mantenimiento', 'En Mantenimiento'),
         ('limpieza', 'En Limpieza'),
     ]
     
@@ -471,11 +666,19 @@ class Notificacion(models.Model):
         ('medicamento_autorizado', 'Medicamento Autorizado'),
         ('medicamento_rechazado', 'Medicamento Rechazado'),
         ('nuevos_signos', 'Nuevos Signos Vitales'),
+        ('signos_criticos', 'Signos Vitales Críticos'),
         ('diagnostico', 'Nuevo Diagnóstico'),
         ('mensaje_chat', 'Nuevo Mensaje'),
         ('examen_solicitado', 'Examen Solicitado'),
+        ('examen_completado', 'Examen Completado'),
+        ('triage_completado', 'Triage Completado'),
         ('cama_asignada', 'Cama Asignada'),
         ('alta_paciente', 'Alta de Paciente'),
+        ('hospitalizacion', 'Paciente Hospitalizado'),
+        ('ingreso_uci', 'Ingreso a UCI'),
+        ('derivacion', 'Paciente Derivado'),
+        ('fallecimiento', 'Fallecimiento'),
+        ('tiempo_espera', 'Alerta Tiempo de Espera'),
         ('sistema', 'Notificación del Sistema'),
     ]
     
@@ -490,7 +693,8 @@ class Notificacion(models.Model):
     usuario = models.ForeignKey(
         Usuario,
         on_delete=models.CASCADE,
-        related_name='notificaciones'
+        related_name='notificaciones',
+        db_column='usuario_destinatario_id'
     )
     
     # Tipo y contenido
@@ -511,7 +715,7 @@ class Notificacion(models.Model):
     # Estado
     leida = models.BooleanField(default=False)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
-    fecha_leida = models.DateTimeField(null=True, blank=True)
+    fecha_leida = models.DateTimeField(null=True, blank=True, db_column='fecha_lectura')
     
     # Datos adicionales en JSON (para links, acciones, etc.)
     datos_extra = models.JSONField(default=dict, blank=True)

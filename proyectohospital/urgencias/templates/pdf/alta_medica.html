@@ -279,7 +279,11 @@
                 <td class="label">Nombre Completo:</td>
                 <td class="value">
                     {% if paciente %}
-                        {{ paciente.nombre }}
+                        {% if paciente.es_nn %}
+                            PACIENTE NN ({{ paciente.id_temporal }})
+                        {% else %}
+                            {{ paciente.nombres }} {{ paciente.apellidos }}
+                        {% endif %}
                     {% else %}
                         PACIENTE NN
                     {% endif %}
@@ -296,10 +300,12 @@
             <tr>
                 <td class="label">Edad:</td>
                 <td class="value">
-                    {% if paciente %}
+                    {% if paciente.edad %}
                         {{ paciente.edad }} años
+                    {% elif paciente.edad_aproximada %}
+                        ~{{ paciente.edad_aproximada }} años (aprox.)
                     {% else %}
-                        Desconocida
+                        No especificada
                     {% endif %}
                 </td>
                 <td class="label">Sexo:</td>
@@ -315,7 +321,7 @@
                 <td class="label">Previsión:</td>
                 <td class="value">
                     {% if paciente and paciente.prevision %}
-                        {{ paciente.prevision }}
+                        {{ paciente.get_prevision_display }}
                     {% else %}
                         No especificada
                     {% endif %}
@@ -345,7 +351,7 @@
             <tr>
                 <td class="label">Médico Tratante:</td>
                 <td class="value" colspan="3">
-                    Dr(a). {{ medico.nombre }} - RUT: {{ medico.rut }}
+                    Dr(a). {{ medico.first_name }} {{ medico.last_name }} - RUT: {{ medico.rut }}
                 </td>
             </tr>
             {% if ficha.tipo_alta %}
@@ -401,7 +407,7 @@
     
     <!-- RECOMENDACIONES -->
     <div class="warning-box">
-        <h4>⚠️ Signos de Alarma - Volver a Urgencias Si:</h4>
+        <h4>Signos de Alarma - Volver a Urgencias Si:</h4>
         <ul>
             <li>Presenta fiebre mayor a 38.5°C que no cede con medicamentos</li>
             <li>Dolor intenso que no mejora con analgésicos</li>
@@ -426,7 +432,7 @@
     <!-- FIRMA -->
     <div class="signature-section">
         <div class="signature-line"></div>
-        <p><strong>Dr(a). {{ medico.nombre }}</strong></p>
+        <p><strong>Dr(a). {{ medico.first_name }} {{ medico.last_name }}</strong></p>
         <p>RUT: {{ medico.rut }}</p>
         {% if medico.especialidad %}
         <p>{{ medico.especialidad }}</p>

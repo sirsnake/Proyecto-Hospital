@@ -12,13 +12,13 @@ from django.template.loader import render_to_string
 from weasyprint import HTML
 import io
 from .models import (Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, 
-                     Anamnesis, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama,
+                     Anamnesis, Triage, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama,
                      ArchivoAdjunto, MensajeChat, Notificacion)
 from .serializers import (
     UsuarioSerializer, LoginSerializer, PacienteSerializer, 
     FichaEmergenciaSerializer, FichaEmergenciaCreateSerializer,
     SignosVitalesSerializer, SignosVitalesCreateSerializer,
-    SolicitudMedicamentoSerializer, AnamnesisSerializer, 
+    SolicitudMedicamentoSerializer, AnamnesisSerializer, TriageSerializer,
     DiagnosticoSerializer, SolicitudExamenSerializer, AuditLogSerializer,
     ConfiguracionHospitalSerializer, CamaSerializer,
     ArchivoAdjuntoSerializer, ArchivoAdjuntoUploadSerializer,
@@ -189,6 +189,31 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         ficha = serializer.save()
         
+        # Crear notificaciones para TENS y Médicos
+        paciente_nombre = f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"Paciente NN ({ficha.paciente.id_temporal})"
+        prioridad_display = ficha.get_prioridad_display()
+        
+        # Notificar a TENS
+        Notificacion.notificar_rol(
+            rol='tens',
+            tipo='nueva_ficha',
+            titulo=f'Nueva emergencia en ruta',
+            mensaje=f'Paciente: {paciente_nombre}\nPrioridad: {prioridad_display}\nMotivo: {ficha.motivo_consulta[:100]}...',
+            ficha=ficha,
+            prioridad='alta' if ficha.prioridad in ['C1', 'C2'] else 'media'
+        )
+        
+        # Notificar a Médicos si es prioridad alta
+        if ficha.prioridad in ['C1', 'C2']:
+            Notificacion.notificar_rol(
+                rol='medico',
+                tipo='nueva_ficha',
+                titulo=f'🚨 Emergencia {prioridad_display} en ruta',
+                mensaje=f'Paciente: {paciente_nombre}\nMotivo: {ficha.motivo_consulta[:100]}...',
+                ficha=ficha,
+                prioridad='urgente'
+            )
+        
         # Devolver la ficha completa con todos los datos
         output_serializer = FichaEmergenciaSerializer(ficha)
         headers = self.get_success_headers(output_serializer.data)
@@ -210,12 +235,68 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def atendidas(self, request):
-        """Obtener fichas atendidas (con diagnóstico)"""
+        """Obtener fichas atendidas (con diagnóstico pero no dados de alta)"""
         from django.db.models import Exists, OuterRef
         from .models import Diagnostico
         
-        # Filtrar fichas que tienen diagnóstico
+        # Filtrar fichas que tienen diagnóstico pero no están dados de alta
         fichas = self.get_queryset().filter(
+            diagnostico__isnull=False,
+            estado='atendido'
+        ).order_by('-fecha_actualizacion')
+        
+        serializer = self.get_serializer(fichas, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def dados_de_alta(self, request):
+        """Obtener fichas de pacientes dados de alta (domicilio y voluntaria)"""
+        fichas = self.get_queryset().filter(
+            estado='dado_de_alta',
+            diagnostico__isnull=False
+        ).order_by('-fecha_actualizacion')
+        
+        serializer = self.get_serializer(fichas, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def hospitalizados(self, request):
+        """Obtener fichas de pacientes hospitalizados"""
+        fichas = self.get_queryset().filter(
+            estado='hospitalizado',
+            diagnostico__isnull=False
+        ).order_by('-fecha_actualizacion')
+        
+        serializer = self.get_serializer(fichas, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def en_uci(self, request):
+        """Obtener fichas de pacientes en UCI"""
+        fichas = self.get_queryset().filter(
+            estado='uci',
+            diagnostico__isnull=False
+        ).order_by('-fecha_actualizacion')
+        
+        serializer = self.get_serializer(fichas, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def derivados(self, request):
+        """Obtener fichas de pacientes derivados"""
+        fichas = self.get_queryset().filter(
+            estado='derivado',
+            diagnostico__isnull=False
+        ).order_by('-fecha_actualizacion')
+        
+        serializer = self.get_serializer(fichas, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def fallecidos(self, request):
+        """Obtener fichas de pacientes fallecidos"""
+        fichas = self.get_queryset().filter(
+            estado='fallecido',
             diagnostico__isnull=False
         ).order_by('-fecha_actualizacion')
         
@@ -227,8 +308,10 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
         """Cambiar el estado de una ficha"""
         ficha = self.get_object()
         nuevo_estado = request.data.get('estado')
+        estado_anterior = ficha.estado
         
-        if nuevo_estado not in ['en_ruta', 'en_hospital', 'atendido']:
+        estados_validos = ['en_ruta', 'en_hospital', 'atendido', 'dado_de_alta', 'hospitalizado', 'uci', 'derivado', 'fallecido']
+        if nuevo_estado not in estados_validos:
             return Response(
                 {'error': 'Estado inválido'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -236,6 +319,84 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
         
         ficha.estado = nuevo_estado
         ficha.save()
+        
+        # Si es dado de alta, liberar la cama automáticamente
+        if nuevo_estado == 'dado_de_alta':
+            cama = Cama.objects.filter(ficha_actual=ficha).first()
+            if cama:
+                cama.estado = 'limpieza'  # Pasa a limpieza antes de disponible
+                cama.ficha_actual = None
+                cama.fecha_asignacion = None
+                cama.asignado_por = None
+                cama.save()
+                
+                # Notificar que hay cama para limpiar
+                Notificacion.notificar_rol(
+                    rol='tens',
+                    tipo='sistema',
+                    titulo=f'🧹 Cama requiere limpieza',
+                    mensaje=f'La cama {cama.numero} ha sido liberada y requiere limpieza.',
+                    prioridad='baja'
+                )
+        
+        # Crear notificaciones según el cambio de estado
+        paciente_nombre = f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"Paciente NN ({ficha.paciente.id_temporal})"
+        
+        if nuevo_estado == 'en_hospital' and estado_anterior == 'en_ruta':
+            # Paciente llegó al hospital - notificar TENS y Médicos
+            Notificacion.notificar_roles(
+                roles=['tens', 'medico'],
+                tipo='ficha_llegada',
+                titulo=f'🏥 Paciente llegó al hospital',
+                mensaje=f'Paciente: {paciente_nombre}\nPrioridad: {ficha.get_prioridad_display()}\nRequiere triage y atención',
+                ficha=ficha,
+                prioridad='alta' if ficha.prioridad in ['C1', 'C2'] else 'media'
+            )
+        
+        serializer = self.get_serializer(ficha)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def asignar_medico(self, request, pk=None):
+        """Asignar médico a una ficha"""
+        ficha = self.get_object()
+        medico_id = request.data.get('medico_id')
+        
+        if not medico_id:
+            return Response({'error': 'Debe proporcionar medico_id'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            medico = Usuario.objects.get(id=medico_id, rol='medico')
+        except Usuario.DoesNotExist:
+            return Response({'error': 'Médico no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        ficha.medico_asignado = medico
+        ficha.save()
+        
+        # Notificar al médico
+        paciente_nombre = f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"Paciente NN ({ficha.paciente.id_temporal})"
+        Notificacion.objects.create(
+            usuario=medico,
+            tipo='asignacion',
+            titulo=f'Nuevo paciente asignado',
+            mensaje=f'Se le ha asignado el paciente: {paciente_nombre}\nPrioridad: {ficha.get_prioridad_display()}\nMotivo: {ficha.motivo_consulta[:100]}',
+            ficha=ficha,
+            prioridad='alta' if ficha.prioridad in ['C1', 'C2'] else 'media'
+        )
+        
+        # Log de auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='editar',
+            modelo='FichaEmergencia',
+            objeto_id=ficha.id,
+            detalles={
+                'accion': 'asignar_medico',
+                'medico_id': medico.id,
+                'medico_nombre': medico.get_full_name()
+            },
+            ip_address=get_client_ip(request)
+        )
         
         serializer = self.get_serializer(ficha)
         return Response(serializer.data)
@@ -304,6 +465,27 @@ class SolicitudMedicamentoViewSet(viewsets.ModelViewSet):
         solicitud.fecha_respuesta = timezone.now()
         solicitud.save()
         
+        # Notificar al paramédico que solicitó
+        if solicitud.paramedico:
+            Notificacion.crear_notificacion(
+                usuario=solicitud.paramedico,
+                tipo='medicamento_autorizado',
+                titulo='✅ Medicamento autorizado',
+                mensaje=f'{solicitud.medicamento} - {solicitud.dosis}\nAutorizado por: Dr. {request.user.get_full_name()}',
+                ficha=solicitud.ficha,
+                prioridad='alta'
+            )
+        
+        # Notificar a TENS para administración
+        Notificacion.notificar_rol(
+            rol='tens',
+            tipo='medicamento_autorizado',
+            titulo='Medicamento autorizado para administrar',
+            mensaje=f'Paciente: Ficha #{solicitud.ficha.id}\n{solicitud.medicamento} - {solicitud.dosis}',
+            ficha=solicitud.ficha,
+            prioridad='alta'
+        )
+        
         serializer = self.get_serializer(solicitud)
         return Response(serializer.data)
     
@@ -323,6 +505,17 @@ class SolicitudMedicamentoViewSet(viewsets.ModelViewSet):
         solicitud.respuesta = request.data.get('respuesta', 'Rechazado')
         solicitud.fecha_respuesta = timezone.now()
         solicitud.save()
+        
+        # Notificar al paramédico que solicitó
+        if solicitud.paramedico:
+            Notificacion.crear_notificacion(
+                usuario=solicitud.paramedico,
+                tipo='medicamento_rechazado',
+                titulo='❌ Medicamento rechazado',
+                mensaje=f'{solicitud.medicamento} - {solicitud.dosis}\nMotivo: {solicitud.respuesta}\nPor: Dr. {request.user.get_full_name()}',
+                ficha=solicitud.ficha,
+                prioridad='alta'
+            )
         
         serializer = self.get_serializer(solicitud)
         return Response(serializer.data)
@@ -344,6 +537,106 @@ class AnamnesisViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+class TriageViewSet(viewsets.ModelViewSet):
+    """ViewSet para gestión de triage hospitalario"""
+    queryset = Triage.objects.all()
+    serializer_class = TriageSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = Triage.objects.select_related('ficha', 'realizado_por', 'ficha__paciente')
+        ficha_id = self.request.query_params.get('ficha', None)
+        
+        if ficha_id:
+            queryset = queryset.filter(ficha_id=ficha_id)
+        
+        return queryset.order_by('-fecha_triage')
+    
+    def create(self, request, *args, **kwargs):
+        """Crear triage y notificar al equipo médico"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        triage = serializer.save()
+        
+        # Obtener información del paciente
+        ficha = triage.ficha
+        paciente = ficha.paciente
+        paciente_nombre = f"{paciente.nombres} {paciente.apellidos}" if not paciente.es_nn else f"Paciente NN ({paciente.id_temporal})"
+        tens_nombre = request.user.get_full_name() or request.user.username
+        
+        # Determinar prioridad de notificación según nivel ESI
+        prioridad_notif = 'urgente' if triage.nivel_esi <= 2 else ('alta' if triage.nivel_esi == 3 else 'media')
+        
+        # Actualizar la prioridad de la ficha basándose en el triage
+        prioridad_mapping = {
+            1: 'C1',
+            2: 'C2', 
+            3: 'C3',
+            4: 'C4',
+            5: 'C5',
+        }
+        ficha.prioridad = prioridad_mapping.get(triage.nivel_esi, ficha.prioridad)
+        ficha.save()
+        
+        # Notificar a médicos
+        Notificacion.notificar_rol(
+            rol='medico',
+            tipo='triage_completado',
+            titulo=f'Triage completado - ESI {triage.nivel_esi}',
+            mensaje=f'Paciente: {paciente_nombre}\nNivel: {triage.get_nivel_esi_display()}\nMotivo: {triage.motivo_consulta_triage[:100]}...\nRealizado por: {tens_nombre}',
+            ficha=ficha,
+            prioridad=prioridad_notif
+        )
+        
+        # Si es ESI 1-2, notificar también a administrador
+        if triage.nivel_esi <= 2:
+            Notificacion.notificar_rol(
+                rol='administrador',
+                tipo='triage_completado',
+                titulo=f'🚨 Paciente crítico - ESI {triage.nivel_esi}',
+                mensaje=f'Paciente: {paciente_nombre}\nRequiere atención inmediata\nTiempo máximo: {triage.get_tiempo_atencion_maximo()}',
+                ficha=ficha,
+                prioridad='urgente'
+            )
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    @action(detail=False, methods=['get'])
+    def pendientes(self, request):
+        """Obtener fichas que necesitan triage (en_hospital sin triage)"""
+        fichas_sin_triage = FichaEmergencia.objects.filter(
+            estado='en_hospital',
+            triage__isnull=True
+        ).select_related('paciente', 'paramedico').order_by('-fecha_registro')
+        
+        # Devolver serializado
+        from .serializers import FichaEmergenciaSerializer
+        serializer = FichaEmergenciaSerializer(fichas_sin_triage, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def estadisticas(self, request):
+        """Estadísticas de triage del día"""
+        from django.db.models import Count
+        from datetime import datetime, timedelta
+        
+        hoy = timezone.now().date()
+        
+        # Contar por nivel ESI
+        triages_hoy = Triage.objects.filter(fecha_triage__date=hoy)
+        por_nivel = triages_hoy.values('nivel_esi').annotate(count=Count('id')).order_by('nivel_esi')
+        
+        # Tiempo promedio de espera (fichas con triage vs sin triage)
+        total_triages = triages_hoy.count()
+        
+        return Response({
+            'fecha': str(hoy),
+            'total_triages': total_triages,
+            'por_nivel_esi': list(por_nivel),
+        })
+
+
 class DiagnosticoViewSet(viewsets.ModelViewSet):
     """ViewSet para gestión de diagnósticos"""
     queryset = Diagnostico.objects.all()
@@ -360,18 +653,92 @@ class DiagnosticoViewSet(viewsets.ModelViewSet):
         return queryset
     
     def create(self, request, *args, **kwargs):
-        """Crear diagnóstico y cerrar la ficha"""
+        """Crear diagnóstico y cambiar estado según tipo de alta"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         
-        # Marcar la ficha como atendida automáticamente
+        # Obtener tipo de alta y cambiar estado de la ficha
         ficha_id = request.data.get('ficha')
+        tipo_alta = request.data.get('tipo_alta', 'domicilio')
+        
         if ficha_id:
             try:
                 ficha = FichaEmergencia.objects.get(id=ficha_id)
-                ficha.estado = 'atendido'
+                
+                # Mapeo de tipo de alta a estado de ficha
+                estado_mapping = {
+                    'domicilio': 'dado_de_alta',
+                    'hospitalizacion': 'hospitalizado',
+                    'uci': 'uci',
+                    'derivacion': 'derivado',
+                    'voluntaria': 'dado_de_alta',
+                    'fallecido': 'fallecido',
+                }
+                
+                nuevo_estado = estado_mapping.get(tipo_alta, 'dado_de_alta')
+                ficha.estado = nuevo_estado
                 ficha.save()
+                
+                # Crear notificaciones según tipo de alta
+                paciente_nombre = f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"Paciente NN ({ficha.paciente.id_temporal})"
+                medico_nombre = request.user.get_full_name() or request.user.username
+                
+                # Notificación base para TENS
+                Notificacion.notificar_rol(
+                    rol='tens',
+                    tipo='diagnostico',
+                    titulo=f'Diagnóstico completado',
+                    mensaje=f'Paciente: {paciente_nombre}\nTipo de alta: {dict(Diagnostico.TIPO_ALTA_CHOICES).get(tipo_alta, tipo_alta)}\nMédico: Dr. {medico_nombre}',
+                    ficha=ficha,
+                    prioridad='media'
+                )
+                
+                # Notificaciones específicas por tipo de alta
+                if tipo_alta == 'hospitalizacion':
+                    Notificacion.notificar_rol(
+                        rol='administrador',
+                        tipo='hospitalizacion',
+                        titulo=f'🏥 Paciente requiere hospitalización',
+                        mensaje=f'Paciente: {paciente_nombre}\nRequiere asignación de cama en hospitalización',
+                        ficha=ficha,
+                        prioridad='alta'
+                    )
+                elif tipo_alta == 'uci':
+                    Notificacion.notificar_roles(
+                        roles=['administrador', 'medico'],
+                        tipo='ingreso_uci',
+                        titulo=f'🚨 Ingreso a UCI',
+                        mensaje=f'Paciente: {paciente_nombre}\nRequiere traslado urgente a UCI',
+                        ficha=ficha,
+                        prioridad='urgente'
+                    )
+                elif tipo_alta == 'derivacion':
+                    destino = request.data.get('destino_derivacion', 'No especificado')
+                    Notificacion.notificar_rol(
+                        rol='administrador',
+                        tipo='derivacion',
+                        titulo=f'Paciente para derivación',
+                        mensaje=f'Paciente: {paciente_nombre}\nDestino: {destino}\nCoordinar traslado',
+                        ficha=ficha,
+                        prioridad='alta'
+                    )
+                elif tipo_alta == 'fallecido':
+                    Notificacion.notificar_rol(
+                        rol='administrador',
+                        tipo='fallecimiento',
+                        titulo=f'⚫ Fallecimiento registrado',
+                        mensaje=f'Paciente: {paciente_nombre}\nRequiere protocolo de fallecimiento y documentación',
+                        ficha=ficha,
+                        prioridad='urgente'
+                    )
+                
+                # Liberar la cama automáticamente si el paciente se va (domicilio, derivación, voluntaria, fallecido)
+                if tipo_alta in ['domicilio', 'derivacion', 'voluntaria', 'fallecido']:
+                    if hasattr(ficha, 'cama_asignada') and ficha.cama_asignada:
+                        cama = ficha.cama_asignada
+                        cama.liberar()
+                    
             except FichaEmergencia.DoesNotExist:
                 pass
         
@@ -384,6 +751,29 @@ class SolicitudExamenViewSet(viewsets.ModelViewSet):
     queryset = SolicitudExamen.objects.all()
     serializer_class = SolicitudExamenSerializer
     permission_classes = [IsAuthenticated]
+    
+    def create(self, request, *args, **kwargs):
+        """Crear solicitud de examen y notificar a TENS"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        solicitud = serializer.save()
+        
+        # Notificar a TENS sobre nuevo examen solicitado
+        paciente = solicitud.ficha.paciente
+        paciente_nombre = f"{paciente.nombres} {paciente.apellidos}" if not paciente.es_nn else f"Paciente NN ({paciente.id_temporal})"
+        medico_nombre = request.user.get_full_name() or request.user.username
+        
+        Notificacion.notificar_rol(
+            rol='tens',
+            tipo='examen_solicitado',
+            titulo=f'Nuevo examen solicitado',
+            mensaje=f'Paciente: {paciente_nombre}\nExamen: {solicitud.tipo_examen}\nPrioridad: {solicitud.get_prioridad_display()}\nSolicitado por: Dr. {medico_nombre}',
+            ficha=solicitud.ficha,
+            prioridad='alta' if solicitud.prioridad == 'urgente' else 'media'
+        )
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     def get_queryset(self):
         queryset = SolicitudExamen.objects.select_related('ficha', 'medico')
@@ -426,6 +816,20 @@ class SolicitudExamenViewSet(viewsets.ModelViewSet):
         if observaciones:
             solicitud.observaciones = observaciones
         solicitud.save()
+        
+        # Notificar al médico que solicitó el examen
+        if solicitud.medico:
+            paciente = solicitud.ficha.paciente
+            paciente_nombre = f"{paciente.nombres} {paciente.apellidos}" if not paciente.es_nn else f"Paciente NN ({paciente.id_temporal})"
+            
+            Notificacion.crear_notificacion(
+                usuario=solicitud.medico,
+                tipo='examen_completado',
+                titulo=f'Resultados de examen disponibles',
+                mensaje=f'Paciente: {paciente_nombre}\nExamen: {solicitud.tipo_examen}\nResultados listos para revisión',
+                ficha=solicitud.ficha,
+                prioridad='alta'
+            )
         
         serializer = self.get_serializer(solicitud)
         return Response(serializer.data)
@@ -724,6 +1128,28 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 last_login__date=timezone.now().date()
             ).count()
         })
+    
+    @action(detail=False, methods=['get'])
+    def medicos(self, request):
+        """Obtener lista de médicos activos para asignación"""
+        medicos = Usuario.objects.filter(rol='medico', is_active=True).order_by('first_name', 'last_name')
+        
+        # Agregar conteo de pacientes asignados a cada médico
+        from django.db.models import Count
+        medicos_con_pacientes = medicos.annotate(
+            pacientes_asignados=Count('fichas_medico', filter=Q(fichas_medico__estado__in=['en_hospital', 'atendido']))
+        )
+        
+        data = []
+        for medico in medicos_con_pacientes:
+            data.append({
+                'id': medico.id,
+                'nombre': medico.get_full_name(),
+                'especialidad': medico.especialidad or 'General',
+                'pacientes_asignados': medico.pacientes_asignados
+            })
+        
+        return Response(data)
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
@@ -972,7 +1398,11 @@ class CamaViewSet(viewsets.ModelViewSet):
             return Response({'error': 'La cama no está ocupada'}, status=status.HTTP_400_BAD_REQUEST)
         
         ficha_id = cama.ficha_actual.id if cama.ficha_actual else None
-        cama.liberar()
+        cama.estado = 'limpieza'  # Pasa a limpieza primero
+        cama.ficha_actual = None
+        cama.fecha_asignacion = None
+        cama.asignado_por = None
+        cama.save()
         
         # Registrar en auditoría
         AuditLog.objects.create(
@@ -983,6 +1413,65 @@ class CamaViewSet(viewsets.ModelViewSet):
             detalles={
                 'accion': 'liberar',
                 'ficha_id': ficha_id
+            },
+            ip_address=get_client_ip(request)
+        )
+        
+        serializer = self.get_serializer(cama)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def marcar_lista(self, request, pk=None):
+        """Marcar cama como lista/disponible después de limpieza"""
+        cama = self.get_object()
+        
+        if cama.estado not in ['limpieza', 'mantenimiento']:
+            return Response({'error': 'La cama debe estar en limpieza o mantenimiento'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        cama.estado = 'disponible'
+        cama.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='editar',
+            modelo='Cama',
+            objeto_id=cama.id,
+            detalles={'accion': 'marcar_lista'},
+            ip_address=get_client_ip(request)
+        )
+        
+        serializer = self.get_serializer(cama)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def cambiar_estado(self, request, pk=None):
+        """Cambiar estado de una cama"""
+        cama = self.get_object()
+        nuevo_estado = request.data.get('estado')
+        
+        estados_validos = ['disponible', 'ocupada', 'reservada', 'mantenimiento', 'limpieza']
+        if nuevo_estado not in estados_validos:
+            return Response({'error': f'Estado inválido. Debe ser uno de: {estados_validos}'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # No permitir cambiar a ocupada sin asignar ficha
+        if nuevo_estado == 'ocupada' and not cama.ficha_actual:
+            return Response({'error': 'No se puede marcar como ocupada sin asignar un paciente'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        estado_anterior = cama.estado
+        cama.estado = nuevo_estado
+        cama.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='editar',
+            modelo='Cama',
+            objeto_id=cama.id,
+            detalles={
+                'accion': 'cambiar_estado',
+                'estado_anterior': estado_anterior,
+                'estado_nuevo': nuevo_estado
             },
             ip_address=get_client_ip(request)
         )
@@ -1057,6 +1546,59 @@ class MensajeChatViewSet(viewsets.ModelViewSet):
         if ficha_id:
             queryset = queryset.filter(ficha_id=ficha_id)
         return queryset.order_by('fecha_envio')
+    
+    def create(self, request, *args, **kwargs):
+        """Override create para devolver el mensaje con el serializer completo"""
+        create_serializer = self.get_serializer(data=request.data)
+        create_serializer.is_valid(raise_exception=True)
+        mensaje = create_serializer.save()
+        
+        # Crear notificaciones para otros usuarios involucrados en la ficha
+        ficha = mensaje.ficha
+        autor = mensaje.autor
+        autor_nombre = autor.get_full_name() or autor.username
+        paciente = ficha.paciente
+        paciente_nombre = f"{paciente.nombres} {paciente.apellidos}" if not paciente.es_nn else f"Paciente NN ({paciente.id_temporal})"
+        
+        # Obtener usuarios que han participado en el chat de esta ficha o están relacionados
+        usuarios_notificar = set()
+        
+        # Agregar paramédico de la ficha
+        if ficha.paramedico and ficha.paramedico != autor:
+            usuarios_notificar.add(ficha.paramedico)
+        
+        # Agregar médico del diagnóstico si existe
+        if hasattr(ficha, 'diagnostico') and ficha.diagnostico and ficha.diagnostico.medico and ficha.diagnostico.medico != autor:
+            usuarios_notificar.add(ficha.diagnostico.medico)
+        
+        # Agregar TENS de la anamnesis si existe
+        if hasattr(ficha, 'anamnesis') and ficha.anamnesis and ficha.anamnesis.tens and ficha.anamnesis.tens != autor:
+            usuarios_notificar.add(ficha.anamnesis.tens)
+        
+        # Agregar otros participantes del chat
+        otros_autores = MensajeChat.objects.filter(ficha=ficha).exclude(autor=autor).values_list('autor', flat=True).distinct()
+        for usuario_id in otros_autores:
+            try:
+                usuario = Usuario.objects.get(id=usuario_id)
+                if usuario != autor:
+                    usuarios_notificar.add(usuario)
+            except Usuario.DoesNotExist:
+                pass
+        
+        # Crear notificaciones
+        for usuario in usuarios_notificar:
+            Notificacion.crear_notificacion(
+                usuario=usuario,
+                tipo='mensaje_chat',
+                titulo=f'💬 Nuevo mensaje de {autor_nombre}',
+                mensaje=f'Paciente: {paciente_nombre}\n"{mensaje.contenido[:100]}..."' if len(mensaje.contenido) > 100 else f'Paciente: {paciente_nombre}\n"{mensaje.contenido}"',
+                ficha=ficha,
+                prioridad='media'
+            )
+        
+        # Devolver con el serializer de lectura para incluir autor completo
+        read_serializer = MensajeChatSerializer(mensaje, context={'request': request})
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
     
     def perform_create(self, serializer):
         serializer.save()
@@ -1173,45 +1715,59 @@ def poll_updates(request):
     Endpoint de polling para obtener actualizaciones de chat y notificaciones.
     El frontend debe llamar este endpoint cada 2-3 segundos.
     """
-    user = request.user
-    ficha_id = request.query_params.get('ficha_id')
-    last_message_id = request.query_params.get('last_message_id', 0)
-    last_notification_id = request.query_params.get('last_notification_id', 0)
-    
-    response_data = {
-        'mensajes': [],
-        'notificaciones': [],
-        'notificaciones_no_leidas': 0,
-    }
-    
-    # Obtener nuevos mensajes si hay ficha_id
-    if ficha_id:
-        nuevos_mensajes = MensajeChat.objects.filter(
-            ficha_id=ficha_id,
-            id__gt=int(last_message_id)
-        ).order_by('fecha_envio')
+    try:
+        user = request.user
+        ficha_id = request.query_params.get('ficha_id')
+        last_message_id = request.query_params.get('last_message_id', 0)
+        last_notification_id = request.query_params.get('last_notification_id', 0)
         
-        response_data['mensajes'] = MensajeChatSerializer(
-            nuevos_mensajes, 
-            many=True,
-            context={'request': request}
-        ).data
-    
-    # Obtener nuevas notificaciones
-    nuevas_notificaciones = Notificacion.objects.filter(
-        usuario=user,
-        id__gt=int(last_notification_id)
-    ).order_by('-fecha_creacion')[:20]
-    
-    response_data['notificaciones'] = NotificacionSerializer(
-        nuevas_notificaciones,
-        many=True
-    ).data
-    
-    # Conteo de notificaciones no leídas
-    response_data['notificaciones_no_leidas'] = Notificacion.objects.filter(
-        usuario=user,
-        leida=False
-    ).count()
-    
-    return Response(response_data)
+        response_data = {
+            'mensajes': [],
+            'notificaciones': [],
+            'notificaciones_no_leidas': 0,
+        }
+        
+        # Obtener nuevos mensajes si hay ficha_id
+        if ficha_id:
+            try:
+                nuevos_mensajes = MensajeChat.objects.filter(
+                    ficha_id=int(ficha_id),
+                    id__gt=int(last_message_id)
+                ).order_by('fecha_envio')
+                
+                response_data['mensajes'] = MensajeChatSerializer(
+                    nuevos_mensajes, 
+                    many=True,
+                    context={'request': request}
+                ).data
+            except (ValueError, TypeError):
+                pass  # Ignorar errores de conversión
+        
+        # Obtener nuevas notificaciones
+        try:
+            nuevas_notificaciones = Notificacion.objects.filter(
+                usuario=user,
+                id__gt=int(last_notification_id)
+            ).order_by('-fecha_creacion')[:20]
+            
+            response_data['notificaciones'] = NotificacionSerializer(
+                nuevas_notificaciones,
+                many=True
+            ).data
+            
+            # Conteo de notificaciones no leídas
+            response_data['notificaciones_no_leidas'] = Notificacion.objects.filter(
+                usuario=user,
+                leida=False
+            ).count()
+        except Exception:
+            pass  # Ignorar errores de notificaciones
+        
+        return Response(response_data)
+    except Exception as e:
+        return Response({
+            'mensajes': [],
+            'notificaciones': [],
+            'notificaciones_no_leidas': 0,
+            'error': str(e)
+        })
