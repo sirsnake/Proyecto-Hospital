@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { getSession, clearSession, type User } from "@/lib/auth"
-import { authAPI, usuariosAPI, auditLogsAPI, fichasAPI, pacientesAPI, solicitudesMedicamentosAPI, configuracionAPI, camasAPI } from "@/lib/api"
+import { authAPI, usuariosAPI, auditLogsAPI, fichasAPI, pacientesAPI, configuracionAPI, camasAPI } from "@/lib/api"
 import { StatCard } from "@/components/stat-card"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,9 +12,9 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "@/hooks/use-toast"
 import { 
-  Building2, 
   Bed, 
   Clock, 
   Users, 
@@ -25,27 +25,19 @@ import {
   Shield,
   FileText,
   Activity,
-  TrendingUp,
-  TrendingDown,
   UserPlus,
   UserCheck,
-  UserX,
-  Search,
   RefreshCw,
-  LogOut,
-  Lightbulb,
-  Hospital,
-  Pill,
-  Check,
-  X,
-  Eye,
-  Wrench,
-  Sparkles,
-  Timer,
-  Ambulance,
   HeartPulse,
   Siren,
-  ClipboardList
+  Plus,
+  Trash2,
+  Calendar,
+  Filter,
+  Download,
+  Timer,
+  Check,
+  Hospital
 } from "lucide-react"
 
 export default function AdministradorDashboard() {
@@ -57,22 +49,15 @@ export default function AdministradorDashboard() {
   const [estadisticas, setEstadisticas] = useState<any>(null)
   const [fichasActivas, setFichasActivas] = useState<any[]>([])
   const [fichasAtendidas, setFichasAtendidas] = useState<any[]>([])
-  const [pacientesTotal, setPacientesTotal] = useState(0)
-  const [solicitudesPendientes, setSolicitudesPendientes] = useState<any[]>([])
   const [tiempoEsperaPromedio, setTiempoEsperaPromedio] = useState(0)
   
   // Estados para camas
   const [camas, setCamas] = useState<any[]>([])
-  const [estadisticasCamas, setEstadisticasCamas] = useState<any>(null)
   const [camasLoading, setCamasLoading] = useState(false)
-  const [filtroCamaEstado, setFiltroCamaEstado] = useState("all")
+  const [modalNuevaCama, setModalNuevaCama] = useState(false)
+  const [nuevaCama, setNuevaCama] = useState({ numero: "", tipo: "general", piso: 1 })
   const [filtroCamaTipo, setFiltroCamaTipo] = useState("all")
-  
-  // Estados para solicitudes de medicamentos
-  const [solicitudesLoading, setSolicitudesLoading] = useState(false)
-  const [modalSolicitudOpen, setModalSolicitudOpen] = useState(false)
-  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<any>(null)
-  const [respuestaSolicitud, setRespuestaSolicitud] = useState("")
+  const [estadisticasCamas, setEstadisticasCamas] = useState<any>(null)
   
   // Estados para usuarios
   const [usuarios, setUsuarios] = useState<any[]>([])
@@ -82,19 +67,28 @@ export default function AdministradorDashboard() {
   const [filtroRol, setFiltroRol] = useState("all")
   const [busqueda, setBusqueda] = useState("")
   
-  // Estados para logs
+  // Estados para logs/auditoría
   const [logs, setLogs] = useState<any[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
-  const [resumenLogs, setResumenLogs] = useState<any>(null)
   const [filtroAccion, setFiltroAccion] = useState("all")
   const [filtroModelo, setFiltroModelo] = useState("all")
+  const [filtroUsuarioLog, setFiltroUsuarioLog] = useState("all")
+  const [fechaDesde, setFechaDesde] = useState("")
+  const [fechaHasta, setFechaHasta] = useState("")
+  
+  // Estados para reportes
+  const [reporteFechaDesde, setReporteFechaDesde] = useState("")
+  const [reporteFechaHasta, setReporteFechaHasta] = useState("")
+  const [reporteData, setReporteData] = useState<any>(null)
   
   // Estados para configuración
+  const [configuracion, setConfiguracion] = useState<any>(null)
+  const [configLoading, setConfigLoading] = useState(false)
   const [camasTotales, setCamasTotales] = useState(50)
   const [camasUCI, setCamasUCI] = useState(10)
   const [salasEmergencia, setSalasEmergencia] = useState(5)
   const [boxesAtencion, setBoxesAtencion] = useState(15)
-  const [, setConfigId] = useState<number | null>(null)
+  const [configId, setConfigId] = useState<number | null>(null)
   
   // Formulario de usuario
   const [formUsuario, setFormUsuario] = useState({
@@ -132,30 +126,12 @@ export default function AdministradorDashboard() {
       const fichasArray = Array.isArray(fichasResponse) ? fichasResponse : []
       setFichasActivas(fichasArray)
       
-      // Cargar fichas atendidas
+      // Cargar fichas atendidas (hoy)
       const fichasAtendidasResponse = await fichasAPI.atendidas()
       const fichasAtendidasArray = Array.isArray(fichasAtendidasResponse) ? fichasAtendidasResponse : []
       setFichasAtendidas(fichasAtendidasArray)
       
-      // Cargar solicitudes pendientes
-      const solicitudesResponse = await solicitudesMedicamentosAPI.pendientes()
-      const solicitudesArray = Array.isArray(solicitudesResponse) ? solicitudesResponse : []
-      setSolicitudesPendientes(solicitudesArray)
-      
-      // Cargar estadísticas de camas
-      try {
-        const camasStats = await camasAPI.estadisticas()
-        setEstadisticasCamas(camasStats)
-      } catch {
-        setEstadisticasCamas(null)
-      }
-      
-      // Cargar pacientes
-      const pacientesResponse = await pacientesAPI.listar()
-      const pacientesArray = pacientesResponse.results || pacientesResponse || []
-      setPacientesTotal(pacientesArray.length)
-      
-      // Calcular tiempo de espera promedio basado en fichas reales
+      // Calcular tiempo de espera promedio
       if (fichasAtendidasArray.length > 0) {
         let totalMinutos = 0
         let conteo = 0
@@ -164,7 +140,7 @@ export default function AdministradorDashboard() {
             const llegada = new Date(ficha.fecha_llegada).getTime()
             const atencion = new Date(ficha.fecha_atencion).getTime()
             const minutos = Math.round((atencion - llegada) / 60000)
-            if (minutos > 0 && minutos < 480) { // máximo 8 horas
+            if (minutos > 0 && minutos < 480) {
               totalMinutos += minutos
               conteo++
             }
@@ -173,12 +149,12 @@ export default function AdministradorDashboard() {
         setTiempoEsperaPromedio(conteo > 0 ? Math.round(totalMinutos / conteo) : 0)
       }
       
-      // Cargar resumen de logs
+      // Cargar estadísticas de camas
       try {
-        const resumen = await auditLogsAPI.resumen()
-        setResumenLogs(resumen)
-      } catch {
-        setResumenLogs({ total_acciones_hoy: 0, ultimas_acciones: [] })
+        const camasStats = await camasAPI.estadisticas()
+        setEstadisticasCamas(camasStats)
+      } catch (error) {
+        console.error('Error cargando estadísticas de camas:', error)
       }
       
     } catch (error) {
@@ -189,104 +165,49 @@ export default function AdministradorDashboard() {
   const cargarCamas = async () => {
     try {
       setCamasLoading(true)
-      const filtros: any = {}
-      if (filtroCamaEstado !== 'all') filtros.estado = filtroCamaEstado
-      if (filtroCamaTipo !== 'all') filtros.tipo = filtroCamaTipo
-      
-      const response = await camasAPI.listar(filtros)
+      const response = await camasAPI.listar()
       setCamas(Array.isArray(response) ? response : response.results || [])
-      
-      // También actualizar estadísticas
+      // Cargar estadísticas también
       const stats = await camasAPI.estadisticas()
       setEstadisticasCamas(stats)
     } catch (error) {
       console.error('Error cargando camas:', error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las camas",
-        variant: "destructive",
-      })
     } finally {
       setCamasLoading(false)
     }
   }
 
-  const cargarSolicitudesPendientes = async () => {
+  const handleCrearCama = async () => {
     try {
-      setSolicitudesLoading(true)
-      const response = await solicitudesMedicamentosAPI.pendientes()
-      setSolicitudesPendientes(Array.isArray(response) ? response : [])
-    } catch (error) {
-      console.error('Error cargando solicitudes:', error)
-    } finally {
-      setSolicitudesLoading(false)
-    }
-  }
-
-  const handleAutorizarSolicitud = async (id: number) => {
-    try {
-      await solicitudesMedicamentosAPI.autorizar(id, respuestaSolicitud || 'Autorizado por administrador')
-      toast({
-        title: "Solicitud autorizada",
-        description: "El medicamento ha sido autorizado para su dispensación",
+      if (!nuevaCama.numero.trim()) {
+        toast({ title: "Error", description: "Ingrese número de cama", variant: "destructive" })
+        return
+      }
+      await camasAPI.crear({
+        numero: nuevaCama.numero,
+        tipo: nuevaCama.tipo,
+        piso: nuevaCama.piso,
+        estado: 'disponible'
       })
-      setModalSolicitudOpen(false)
-      setSolicitudSeleccionada(null)
-      setRespuestaSolicitud("")
-      cargarSolicitudesPendientes()
-      cargarDashboard()
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo autorizar la solicitud",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleRechazarSolicitud = async (id: number) => {
-    if (!respuestaSolicitud.trim()) {
-      toast({
-        title: "Error",
-        description: "Debe indicar un motivo para rechazar la solicitud",
-        variant: "destructive",
-      })
-      return
-    }
-    try {
-      await solicitudesMedicamentosAPI.rechazar(id, respuestaSolicitud)
-      toast({
-        title: "Solicitud rechazada",
-        description: "La solicitud ha sido rechazada",
-      })
-      setModalSolicitudOpen(false)
-      setSolicitudSeleccionada(null)
-      setRespuestaSolicitud("")
-      cargarSolicitudesPendientes()
-      cargarDashboard()
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo rechazar la solicitud",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleCambiarEstadoCama = async (id: number, nuevoEstado: string) => {
-    try {
-      await camasAPI.cambiarEstado(id, nuevoEstado)
-      toast({
-        title: "Estado actualizado",
-        description: `La cama ahora está en estado: ${nuevoEstado}`,
-      })
+      toast({ title: "Cama creada", description: `Cama ${nuevaCama.numero} creada exitosamente` })
+      setModalNuevaCama(false)
+      setNuevaCama({ numero: "", tipo: "general", piso: 1 })
       cargarCamas()
+      cargarConfiguracion()
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo cambiar el estado",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: error.message || "No se pudo crear la cama", variant: "destructive" })
+    }
+  }
+
+  const handleEliminarCama = async (id: number) => {
+    if (!confirm("¿Eliminar esta cama? Solo se puede eliminar si está disponible.")) return
+    try {
+      await camasAPI.eliminar(id)
+      toast({ title: "Cama eliminada", description: "La cama ha sido eliminada" })
+      cargarCamas()
+      cargarConfiguracion()
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "No se pudo eliminar", variant: "destructive" })
     }
   }
 
@@ -339,10 +260,8 @@ export default function AdministradorDashboard() {
       cargarLogs()
     } else if (activeTab === "camas") {
       cargarCamas()
-    } else if (activeTab === "medicamentos") {
-      cargarSolicitudesPendientes()
     }
-  }, [activeTab, filtroRol, busqueda, filtroAccion, filtroModelo, filtroCamaEstado, filtroCamaTipo])
+  }, [activeTab, filtroRol, busqueda, filtroAccion, filtroModelo, filtroUsuarioLog, fechaDesde, fechaHasta])
 
   const handleGuardarUsuario = async () => {
     try {
@@ -536,17 +455,10 @@ export default function AdministradorDashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7 lg:w-[1200px]">
+          <TabsList className="grid w-full grid-cols-6 lg:w-[1000px]">
             <TabsTrigger value="dashboard" className="flex items-center gap-1">
               <Activity className="w-4 h-4" />
               Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="medicamentos" className="flex items-center gap-1">
-              <Pill className="w-4 h-4" />
-              Medicamentos
-              {solicitudesPendientes.length > 0 && (
-                <Badge className="ml-1 bg-red-500 text-white text-xs px-1.5">{solicitudesPendientes.length}</Badge>
-              )}
             </TabsTrigger>
             <TabsTrigger value="camas" className="flex items-center gap-1">
               <Bed className="w-4 h-4" />
@@ -612,11 +524,10 @@ export default function AdministradorDashboard() {
                 description="Tiempo de atención"
               />
               <StatCard
-                title="Solicitudes"
-                value={String(solicitudesPendientes.length)}
-                icon={<Pill className="w-5 h-5 text-purple-400" />}
-                description="Medicamentos pendientes"
-                trend={solicitudesPendientes.length > 5 ? { value: "Atención requerida", isPositive: false } : undefined}
+                title="Camas Disponibles"
+                value={estadisticasCamas ? String(estadisticasCamas.disponibles) : '--'}
+                icon={<Bed className="w-5 h-5 text-purple-400" />}
+                description="Para nuevos pacientes"
               />
               <StatCard
                 title="Atendidos Hoy"
@@ -750,7 +661,7 @@ export default function AdministradorDashboard() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Total pacientes</span>
-                      <span className="text-2xl font-bold">{pacientesTotal}</span>
+                      <span className="text-2xl font-bold">{fichasActivas.length + fichasAtendidas.length}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -763,9 +674,9 @@ export default function AdministradorDashboard() {
                   <CardDescription>Últimas acciones</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {resumenLogs?.ultimas_acciones && resumenLogs.ultimas_acciones.length > 0 ? (
+                  {logs && logs.length > 0 ? (
                     <div className="space-y-3">
-                      {resumenLogs.ultimas_acciones.slice(0, 5).map((log: any) => (
+                      {logs.slice(0, 5).map((log: any) => (
                         <div key={log.id} className="flex items-start gap-3 text-sm">
                           <div className={`w-2 h-2 rounded-full mt-1.5 ${
                             log.accion === 'crear' ? 'bg-green-500' :
@@ -795,103 +706,11 @@ export default function AdministradorDashboard() {
             </div>
           </TabsContent>
 
-          {/* Tab: Medicamentos (Solicitudes Pendientes) */}
-          <TabsContent value="medicamentos" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Pill className="w-5 h-5 text-purple-400" />
-                      Solicitudes de Medicamentos
-                    </CardTitle>
-                    <CardDescription>Autoriza o rechaza solicitudes de medicamentos del personal médico</CardDescription>
-                  </div>
-                  <Button variant="outline" onClick={cargarSolicitudesPendientes} className="border-slate-600">
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Actualizar
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {solicitudesLoading ? (
-                  <div className="text-center py-12 text-slate-400">Cargando solicitudes...</div>
-                ) : solicitudesPendientes.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Check className="w-12 h-12 text-green-400 mx-auto mb-4" />
-                    <p className="text-lg font-medium text-white">Sin solicitudes pendientes</p>
-                    <p className="text-sm text-slate-400 mt-1">Todas las solicitudes han sido procesadas</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {solicitudesPendientes.map((solicitud: any) => (
-                      <div key={solicitud.id} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <Badge className={
-                                solicitud.urgencia === 'urgente' ? 'bg-red-500/20 text-red-400' :
-                                solicitud.urgencia === 'alta' ? 'bg-orange-500/20 text-orange-400' :
-                                'bg-blue-500/20 text-blue-400'
-                              }>
-                                {solicitud.urgencia || 'Normal'}
-                              </Badge>
-                              <span className="text-xs text-slate-500">
-                                {new Date(solicitud.fecha_solicitud || solicitud.created_at).toLocaleString('es-CL')}
-                              </span>
-                            </div>
-                            <h4 className="font-semibold text-white mb-1">{solicitud.medicamento}</h4>
-                            <p className="text-sm text-slate-400 mb-2">
-                              Cantidad: {solicitud.cantidad} | Paciente: {solicitud.paciente_nombre || `Ficha #${solicitud.ficha}`}
-                            </p>
-                            {solicitud.justificacion && (
-                              <p className="text-sm text-slate-500 italic">"{solicitud.justificacion}"</p>
-                            )}
-                            <p className="text-xs text-slate-500 mt-2">
-                              Solicitado por: {solicitud.solicitante_nombre || 'Personal médico'}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              className="bg-green-600 hover:bg-green-700"
-                              onClick={() => {
-                                setSolicitudSeleccionada(solicitud)
-                                setRespuestaSolicitud("")
-                                setModalSolicitudOpen(true)
-                              }}
-                            >
-                              <Check className="w-4 h-4 mr-1" />
-                              Autorizar
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                              onClick={() => {
-                                setSolicitudSeleccionada(solicitud)
-                                setRespuestaSolicitud("")
-                                setModalSolicitudOpen(true)
-                              }}
-                            >
-                              <X className="w-4 h-4 mr-1" />
-                              Rechazar
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* Tab: Camas */}
           <TabsContent value="camas" className="space-y-6">
             {/* Estadísticas de camas */}
             {estadisticasCamas && (
-              <div className="grid gap-4 md:grid-cols-5">
+              <div className="grid gap-4 md:grid-cols-3">
                 <Card className="bg-gradient-to-br from-blue-500/10 to-blue-500/5 border-blue-500/20">
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
@@ -925,28 +744,6 @@ export default function AdministradorDashboard() {
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="bg-gradient-to-br from-yellow-500/10 to-yellow-500/5 border-yellow-500/20">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-slate-400">Mantenimiento</p>
-                        <p className="text-2xl font-bold text-yellow-400">{estadisticasCamas.mantenimiento}</p>
-                      </div>
-                      <Wrench className="w-8 h-8 text-yellow-400" />
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border-purple-500/20">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-slate-400">Limpieza</p>
-                        <p className="text-2xl font-bold text-purple-400">{estadisticasCamas.limpieza}</p>
-                      </div>
-                      <Sparkles className="w-8 h-8 text-purple-400" />
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
             )}
 
@@ -955,7 +752,7 @@ export default function AdministradorDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>Gestión de Camas</CardTitle>
-                    <CardDescription>Visualiza y administra el estado de todas las camas</CardDescription>
+                    <CardDescription>Administra las camas del hospital. Agrega o elimina camas según la capacidad.</CardDescription>
                   </div>
                   <div className="flex gap-2">
                     <Select value={filtroCamaTipo} onValueChange={setFiltroCamaTipo}>
@@ -970,20 +767,12 @@ export default function AdministradorDashboard() {
                         <SelectItem value="aislamiento" className="text-white">Aislamiento</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Select value={filtroCamaEstado} onValueChange={setFiltroCamaEstado}>
-                      <SelectTrigger className="w-40 bg-slate-800 border-slate-600">
-                        <SelectValue placeholder="Estado" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-800 border-slate-700">
-                        <SelectItem value="all" className="text-white">Todos</SelectItem>
-                        <SelectItem value="disponible" className="text-white">Disponible</SelectItem>
-                        <SelectItem value="ocupada" className="text-white">Ocupada</SelectItem>
-                        <SelectItem value="mantenimiento" className="text-white">Mantenimiento</SelectItem>
-                        <SelectItem value="limpieza" className="text-white">Limpieza</SelectItem>
-                      </SelectContent>
-                    </Select>
                     <Button variant="outline" onClick={cargarCamas} className="border-slate-600">
                       <RefreshCw className="w-4 h-4" />
+                    </Button>
+                    <Button onClick={() => setModalNuevaCama(true)} className="bg-green-600 hover:bg-green-700">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Nueva Cama
                     </Button>
                   </div>
                 </div>
@@ -995,7 +784,7 @@ export default function AdministradorDashboard() {
                   <div className="text-center py-12">
                     <Bed className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                     <p className="text-lg font-medium text-white">No hay camas registradas</p>
-                    <p className="text-sm text-slate-400 mt-1">Configura las camas en la pestaña de Configuración</p>
+                    <p className="text-sm text-slate-400 mt-1">Haz clic en "Nueva Cama" para agregar una</p>
                   </div>
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -1004,42 +793,38 @@ export default function AdministradorDashboard() {
                         key={cama.id} 
                         className={`rounded-xl p-4 border transition-all ${
                           cama.estado === 'disponible' ? 'bg-green-500/10 border-green-500/30' :
-                          cama.estado === 'ocupada' ? 'bg-red-500/10 border-red-500/30' :
-                          cama.estado === 'mantenimiento' ? 'bg-yellow-500/10 border-yellow-500/30' :
-                          'bg-purple-500/10 border-purple-500/30'
+                          'bg-red-500/10 border-red-500/30'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-semibold text-white">{cama.numero}</span>
-                          <Badge className={
-                            cama.estado === 'disponible' ? 'bg-green-500/20 text-green-400' :
-                            cama.estado === 'ocupada' ? 'bg-red-500/20 text-red-400' :
-                            cama.estado === 'mantenimiento' ? 'bg-yellow-500/20 text-yellow-400' :
-                            'bg-purple-500/20 text-purple-400'
-                          }>
-                            {cama.estado}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge className={
+                              cama.estado === 'disponible' ? 'bg-green-500/20 text-green-400' :
+                              'bg-red-500/20 text-red-400'
+                            }>
+                              {cama.estado}
+                            </Badge>
+                            {cama.estado === 'disponible' && (
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                onClick={() => handleEliminarCama(cama.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <p className="text-xs text-slate-400 mb-2">
                           Tipo: {cama.tipo} | Piso: {cama.piso}
                         </p>
                         {cama.ficha_actual && (
-                          <div className="bg-slate-800/50 rounded-lg p-2 mb-2">
+                          <div className="bg-slate-800/50 rounded-lg p-2">
                             <p className="text-sm text-white">{cama.paciente_nombre || `Paciente #${cama.ficha_actual}`}</p>
                             <p className="text-xs text-slate-400">Desde: {new Date(cama.fecha_asignacion).toLocaleDateString('es-CL')}</p>
                           </div>
-                        )}
-                        {cama.estado !== 'ocupada' && (
-                          <Select onValueChange={(value) => handleCambiarEstadoCama(cama.id, value)}>
-                            <SelectTrigger className="w-full h-8 text-xs bg-slate-800 border-slate-600">
-                              <SelectValue placeholder="Cambiar estado" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-800 border-slate-700">
-                              <SelectItem value="disponible" className="text-white text-xs">Disponible</SelectItem>
-                              <SelectItem value="mantenimiento" className="text-white text-xs">Mantenimiento</SelectItem>
-                              <SelectItem value="limpieza" className="text-white text-xs">Limpieza</SelectItem>
-                            </SelectContent>
-                          </Select>
                         )}
                       </div>
                     ))}
@@ -1053,8 +838,39 @@ export default function AdministradorDashboard() {
           <TabsContent value="reportes" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Reportes del Sistema</CardTitle>
-                <CardDescription>Estadísticas y análisis detallados</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-blue-400" />
+                      Reportes del Sistema
+                    </CardTitle>
+                    <CardDescription>Estadísticas y análisis por rango de fechas</CardDescription>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-400">Desde:</span>
+                      <Input 
+                        type="date" 
+                        value={reporteFechaDesde}
+                        onChange={(e) => setReporteFechaDesde(e.target.value)}
+                        className="w-40 bg-slate-800 border-slate-600"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-400">Hasta:</span>
+                      <Input 
+                        type="date" 
+                        value={reporteFechaHasta}
+                        onChange={(e) => setReporteFechaHasta(e.target.value)}
+                        className="w-40 bg-slate-800 border-slate-600"
+                      />
+                    </div>
+                    <Button variant="outline" className="border-slate-600">
+                      <Download className="w-4 h-4 mr-2" />
+                      Exportar
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Reporte de Atenciones */}
@@ -1063,20 +879,21 @@ export default function AdministradorDashboard() {
                     <Activity className="w-5 h-5 text-blue-400" />
                     Reporte de Atenciones
                   </h3>
-                  <div className="grid md:grid-cols-3 gap-4 mb-4">
+                  <div className="grid md:grid-cols-4 gap-4 mb-4">
                     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <p className="text-sm text-slate-400">Atenciones Totales</p>
-                      <p className="text-3xl font-bold text-white">{fichasAtendidas.length}</p>
-                      {fichasAtendidas.length > 0 && (
-                        <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3" /> Activo
-                        </p>
-                      )}
+                      <p className="text-sm text-slate-400">Atenciones Hoy</p>
+                      <p className="text-3xl font-bold text-white">{fichasAtendidas.filter((f: any) => {
+                        const hoy = new Date().toISOString().split('T')[0]
+                        return f.fecha_atencion?.startsWith(hoy)
+                      }).length}</p>
                     </div>
                     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <p className="text-sm text-slate-400">Promedio Diario</p>
-                      <p className="text-3xl font-bold text-white">{Math.max(1, Math.round(fichasAtendidas.length / 7))}</p>
-                      <p className="text-xs text-slate-500 mt-1">Últimos 7 días</p>
+                      <p className="text-sm text-slate-400">Total del Período</p>
+                      <p className="text-3xl font-bold text-white">{fichasAtendidas.length}</p>
+                    </div>
+                    <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                      <p className="text-sm text-slate-400">En Espera Ahora</p>
+                      <p className="text-3xl font-bold text-orange-400">{fichasActivas.length}</p>
                     </div>
                     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
                       <p className="text-sm text-slate-400">Tiempo Promedio</p>
@@ -1086,27 +903,25 @@ export default function AdministradorDashboard() {
                   </div>
                 </div>
 
-                {/* Reporte de Recursos */}
+                {/* Reporte de Camas */}
                 <div className="border border-slate-700 rounded-lg p-4 bg-slate-800/30">
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-orange-400" />
-                    Recursos y Medicamentos
+                    <Bed className="w-5 h-5 text-green-400" />
+                    Estado de Camas
                   </h3>
                   <div className="grid md:grid-cols-3 gap-4">
                     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <p className="text-sm text-slate-400">Solicitudes Pendientes</p>
-                      <p className="text-3xl font-bold text-orange-400">{solicitudesPendientes}</p>
+                      <p className="text-sm text-slate-400">Total Camas</p>
+                      <p className="text-3xl font-bold text-white">{estadisticasCamas?.total || 0}</p>
                     </div>
                     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <p className="text-sm text-slate-400">Recursos Críticos</p>
-                      <p className="text-3xl font-bold text-green-400">0</p>
-                      <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                        <UserCheck className="w-3 h-3" /> Stock normal
-                      </p>
+                      <p className="text-sm text-slate-400">Ocupación Actual</p>
+                      <p className="text-3xl font-bold text-blue-400">{estadisticasCamas?.porcentaje_ocupacion || 0}%</p>
+                      <p className="text-xs text-slate-500 mt-1">{estadisticasCamas?.ocupadas || 0} ocupadas</p>
                     </div>
                     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <p className="text-sm text-slate-400">Autorizadas Hoy</p>
-                      <p className="text-3xl font-bold text-blue-400">0</p>
+                      <p className="text-sm text-slate-400">Disponibles</p>
+                      <p className="text-3xl font-bold text-green-400">{estadisticasCamas?.disponibles || 0}</p>
                     </div>
                   </div>
                 </div>
@@ -1115,7 +930,7 @@ export default function AdministradorDashboard() {
                 <div className="border border-slate-700 rounded-lg p-4 bg-slate-800/30">
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Users className="w-5 h-5 text-purple-400" />
-                    Personal y Turnos
+                    Personal Activo
                   </h3>
                   <div className="space-y-3">
                     {estadisticas?.usuarios_por_rol && Object.entries(estadisticas.usuarios_por_rol).map(([rol, cantidad]: [string, any]) => (
@@ -1141,7 +956,6 @@ export default function AdministradorDashboard() {
                         </div>
                         <div className="text-right">
                           <p className="text-2xl font-bold text-white">{cantidad}</p>
-                          <p className="text-xs text-slate-400">En turno</p>
                         </div>
                       </div>
                     ))}
@@ -1264,98 +1078,155 @@ export default function AdministradorDashboard() {
             </Card>
           </TabsContent>
 
-          {/* Tab: Logs */}
+          {/* Tab: Logs (Auditoría Completa) */}
           <TabsContent value="logs" className="space-y-6">
-            <div className="flex gap-4">
-              <div className="w-[200px]">
-                <Select value={filtroAccion} onValueChange={setFiltroAccion}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por acción" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las acciones</SelectItem>
-                    <SelectItem value="crear">Crear</SelectItem>
-                    <SelectItem value="editar">Editar</SelectItem>
-                    <SelectItem value="eliminar">Eliminar</SelectItem>
-                    <SelectItem value="autorizar">Autorizar</SelectItem>
-                    <SelectItem value="rechazar">Rechazar</SelectItem>
-                    <SelectItem value="login">Login</SelectItem>
-                    <SelectItem value="logout">Logout</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-[200px]">
-                <Select value={filtroModelo} onValueChange={setFiltroModelo}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por modelo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los modelos</SelectItem>
-                    <SelectItem value="Usuario">Usuario</SelectItem>
-                    <SelectItem value="FichaEmergencia">Ficha</SelectItem>
-                    <SelectItem value="Diagnostico">Diagnóstico</SelectItem>
-                    <SelectItem value="SolicitudMedicamento">Solicitud Medicamento</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
             <Card>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Usuario</TableHead>
-                      <TableHead>Acción</TableHead>
-                      <TableHead>Modelo</TableHead>
-                      <TableHead>ID Objeto</TableHead>
-                      <TableHead>Fecha/Hora</TableHead>
-                      <TableHead>IP</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {logsLoading ? (
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-green-400" />
+                      Registro de Auditoría
+                    </CardTitle>
+                    <CardDescription>Todas las acciones realizadas en el sistema por todos los usuarios</CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input 
+                      type="date" 
+                      value={fechaDesde}
+                      onChange={(e) => setFechaDesde(e.target.value)}
+                      className="w-40 bg-slate-800 border-slate-600"
+                      placeholder="Desde"
+                    />
+                    <Input 
+                      type="date" 
+                      value={fechaHasta}
+                      onChange={(e) => setFechaHasta(e.target.value)}
+                      className="w-40 bg-slate-800 border-slate-600"
+                      placeholder="Hasta"
+                    />
+                    <Button variant="outline" onClick={cargarLogs} className="border-slate-600">
+                      <Filter className="w-4 h-4 mr-2" />
+                      Filtrar
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Filtros adicionales */}
+                <div className="flex gap-4 flex-wrap">
+                  <Select value={filtroAccion} onValueChange={setFiltroAccion}>
+                    <SelectTrigger className="w-[180px] bg-slate-800 border-slate-600">
+                      <SelectValue placeholder="Acción" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      <SelectItem value="all" className="text-white">Todas las acciones</SelectItem>
+                      <SelectItem value="crear" className="text-white">Crear</SelectItem>
+                      <SelectItem value="editar" className="text-white">Editar</SelectItem>
+                      <SelectItem value="eliminar" className="text-white">Eliminar</SelectItem>
+                      <SelectItem value="asignar_cama" className="text-white">Asignar Cama</SelectItem>
+                      <SelectItem value="liberar_cama" className="text-white">Liberar Cama</SelectItem>
+                      <SelectItem value="alta" className="text-white">Dar de Alta</SelectItem>
+                      <SelectItem value="login" className="text-white">Login</SelectItem>
+                      <SelectItem value="logout" className="text-white">Logout</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filtroModelo} onValueChange={setFiltroModelo}>
+                    <SelectTrigger className="w-[180px] bg-slate-800 border-slate-600">
+                      <SelectValue placeholder="Módulo" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      <SelectItem value="all" className="text-white">Todos los módulos</SelectItem>
+                      <SelectItem value="Usuario" className="text-white">Usuarios</SelectItem>
+                      <SelectItem value="FichaEmergencia" className="text-white">Fichas</SelectItem>
+                      <SelectItem value="Diagnostico" className="text-white">Diagnósticos</SelectItem>
+                      <SelectItem value="Cama" className="text-white">Camas</SelectItem>
+                      <SelectItem value="Sesion" className="text-white">Sesiones</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Buscar por usuario..."
+                    value={filtroUsuarioLog}
+                    onChange={(e) => setFiltroUsuarioLog(e.target.value)}
+                    className="w-[200px] bg-slate-800 border-slate-600"
+                  />
+                </div>
+
+                {/* Tabla de Logs */}
+                <ScrollArea className="h-[500px]">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-slate-400">
-                          Cargando logs...
-                        </TableCell>
+                        <TableHead className="w-[180px]">Fecha/Hora</TableHead>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>Rol</TableHead>
+                        <TableHead>Acción</TableHead>
+                        <TableHead>Módulo</TableHead>
+                        <TableHead>Detalles</TableHead>
+                        <TableHead>IP</TableHead>
                       </TableRow>
-                    ) : logs.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-slate-400">
-                          No se encontraron logs
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      logs.map((log) => (
-                        <TableRow key={log.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{log.usuario_nombre || 'Sistema'}</p>
-                              <p className="text-xs text-slate-500 capitalize">{log.usuario_rol}</p>
-                            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {logsLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-slate-400">
+                            Cargando registros...
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={
-                              log.accion === 'crear' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                              log.accion === 'editar' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                              log.accion === 'eliminar' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                              'bg-gray-500/10 text-gray-400 border-gray-500/20'
-                            }>
-                              {log.accion_display || log.accion}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{log.modelo}</TableCell>
-                          <TableCell>#{log.objeto_id || 'N/A'}</TableCell>
-                          <TableCell className="text-sm">
-                            {new Date(log.timestamp).toLocaleString('es-CL')}
-                          </TableCell>
-                          <TableCell className="text-xs text-slate-500">{log.ip_address}</TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : logs.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-slate-400">
+                            No se encontraron registros de auditoría
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        logs.map((log) => (
+                          <TableRow key={log.id} className="hover:bg-slate-800/50">
+                            <TableCell className="text-sm font-mono">
+                              {new Date(log.timestamp).toLocaleString('es-CL')}
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium text-white">{log.usuario_nombre || 'Sistema'}</span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={
+                                log.usuario_rol === 'administrador' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                                log.usuario_rol === 'medico' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                                log.usuario_rol === 'tens' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                                log.usuario_rol === 'paramedico' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                                'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                              }>
+                                {log.usuario_rol || 'N/A'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={
+                                log.accion === 'crear' ? 'bg-green-500/20 text-green-400' :
+                                log.accion === 'editar' ? 'bg-blue-500/20 text-blue-400' :
+                                log.accion === 'eliminar' ? 'bg-red-500/20 text-red-400' :
+                                log.accion === 'asignar_cama' ? 'bg-cyan-500/20 text-cyan-400' :
+                                log.accion === 'liberar_cama' ? 'bg-yellow-500/20 text-yellow-400' :
+                                log.accion === 'alta' ? 'bg-emerald-500/20 text-emerald-400' :
+                                log.accion === 'login' ? 'bg-indigo-500/20 text-indigo-400' :
+                                log.accion === 'logout' ? 'bg-gray-500/20 text-gray-400' :
+                                'bg-purple-500/20 text-purple-400'
+                              }>
+                                {log.accion_display || log.accion}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-slate-300">{log.modelo}</TableCell>
+                            <TableCell className="max-w-[200px]">
+                              <span className="text-sm text-slate-400 truncate block">
+                                {log.descripcion || `ID: #${log.objeto_id || 'N/A'}`}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-500 font-mono">{log.ip_address || 'N/A'}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1601,82 +1472,62 @@ export default function AdministradorDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Autorizar/Rechazar Solicitud */}
-      <Dialog open={modalSolicitudOpen} onOpenChange={setModalSolicitudOpen}>
-        <DialogContent className="max-w-lg" onOpenAutoFocus={(e) => e.preventDefault()}>
+      {/* Modal Nueva Cama */}
+      <Dialog open={modalNuevaCama} onOpenChange={setModalNuevaCama}>
+        <DialogContent className="max-w-md" onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Pill className="w-5 h-5 text-purple-400" />
-              Procesar Solicitud de Medicamento
+              <Bed className="w-5 h-5 text-blue-400" />
+              Agregar Nueva Cama
             </DialogTitle>
             <DialogDescription>
-              Revisa la solicitud y decide si autorizarla o rechazarla
+              Ingresa los datos de la nueva cama para el hospital
             </DialogDescription>
           </DialogHeader>
-          {solicitudSeleccionada && (
-            <div className="space-y-4 py-4">
-              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-slate-500">Medicamento</p>
-                    <p className="font-semibold text-white">{solicitudSeleccionada.medicamento}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Cantidad</p>
-                    <p className="font-semibold text-white">{solicitudSeleccionada.cantidad}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Paciente</p>
-                    <p className="text-white">{solicitudSeleccionada.paciente_nombre || `Ficha #${solicitudSeleccionada.ficha}`}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Urgencia</p>
-                    <Badge className={
-                      solicitudSeleccionada.urgencia === 'urgente' ? 'bg-red-500/20 text-red-400' :
-                      solicitudSeleccionada.urgencia === 'alta' ? 'bg-orange-500/20 text-orange-400' :
-                      'bg-blue-500/20 text-blue-400'
-                    }>
-                      {solicitudSeleccionada.urgencia || 'Normal'}
-                    </Badge>
-                  </div>
-                </div>
-                {solicitudSeleccionada.justificacion && (
-                  <div className="mt-3 pt-3 border-t border-slate-700">
-                    <p className="text-xs text-slate-500">Justificación</p>
-                    <p className="text-sm text-slate-300 italic">"{solicitudSeleccionada.justificacion}"</p>
-                  </div>
-                )}
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Respuesta / Comentario</Label>
-                <Input
-                  placeholder="Agregar comentario (obligatorio para rechazar)"
-                  value={respuestaSolicitud}
-                  onChange={(e) => setRespuestaSolicitud(e.target.value)}
-                  className="bg-slate-800 border-slate-600"
-                />
-              </div>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="numero_cama">Número de Cama *</Label>
+              <Input
+                id="numero_cama"
+                value={nuevaCama.numero}
+                onChange={(e) => setNuevaCama({ ...nuevaCama, numero: e.target.value })}
+                placeholder="Ej: CAMA-001"
+                className="bg-slate-800 border-slate-600"
+              />
             </div>
-          )}
+            <div className="space-y-2">
+              <Label htmlFor="tipo_cama">Tipo *</Label>
+              <Select value={nuevaCama.tipo} onValueChange={(value) => setNuevaCama({ ...nuevaCama, tipo: value })}>
+                <SelectTrigger className="bg-slate-800 border-slate-600">
+                  <SelectValue placeholder="Seleccionar tipo" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  <SelectItem value="general" className="text-white">General</SelectItem>
+                  <SelectItem value="uci" className="text-white">UCI</SelectItem>
+                  <SelectItem value="box" className="text-white">Box de Atención</SelectItem>
+                  <SelectItem value="aislamiento" className="text-white">Aislamiento</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="piso_cama">Piso</Label>
+              <Input
+                id="piso_cama"
+                type="number"
+                value={nuevaCama.piso}
+                onChange={(e) => setNuevaCama({ ...nuevaCama, piso: Number(e.target.value) })}
+                placeholder="1"
+                className="bg-slate-800 border-slate-600"
+              />
+            </div>
+          </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setModalSolicitudOpen(false)} className="border-slate-600">
+            <Button variant="outline" onClick={() => setModalNuevaCama(false)} className="border-slate-600">
               Cancelar
             </Button>
-            <Button 
-              variant="outline" 
-              className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-              onClick={() => solicitudSeleccionada && handleRechazarSolicitud(solicitudSeleccionada.id)}
-            >
-              <X className="w-4 h-4 mr-1" />
-              Rechazar
-            </Button>
-            <Button 
-              className="bg-green-600 hover:bg-green-700"
-              onClick={() => solicitudSeleccionada && handleAutorizarSolicitud(solicitudSeleccionada.id)}
-            >
-              <Check className="w-4 h-4 mr-1" />
-              Autorizar
+            <Button onClick={handleCrearCama} className="bg-green-600 hover:bg-green-700">
+              <Plus className="w-4 h-4 mr-1" />
+              Crear Cama
             </Button>
           </div>
         </DialogContent>

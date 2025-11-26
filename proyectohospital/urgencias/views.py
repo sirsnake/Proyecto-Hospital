@@ -55,6 +55,16 @@ def login_view(request):
         user = serializer.validated_data['user']
         login(request, user)
         
+        # Registrar login en auditoría
+        AuditLog.objects.create(
+            usuario=user,
+            accion='login',
+            modelo='Sesion',
+            objeto_id=user.id,
+            detalles={'username': user.username, 'rol': user.rol},
+            ip_address=get_client_ip(request)
+        )
+        
         # Crear respuesta y asegurar que se envíe el CSRF token
         response = Response({
             'user': UsuarioSerializer(user).data,
@@ -73,6 +83,18 @@ def login_view(request):
 @permission_classes([IsAuthenticated])
 def logout_view(request):
     """Endpoint para logout de usuarios"""
+    user = request.user
+    
+    # Registrar logout en auditoría
+    AuditLog.objects.create(
+        usuario=user,
+        accion='logout',
+        modelo='Sesion',
+        objeto_id=user.id,
+        detalles={'username': user.username},
+        ip_address=get_client_ip(request)
+    )
+    
     logout(request)
     return Response({'message': 'Logout exitoso'})
 
@@ -188,6 +210,20 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ficha = serializer.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='crear',
+            modelo='FichaEmergencia',
+            objeto_id=ficha.id,
+            detalles={
+                'paciente': str(ficha.paciente),
+                'prioridad': ficha.prioridad,
+                'motivo': ficha.motivo_consulta[:100]
+            },
+            ip_address=get_client_ip(request)
+        )
         
         # Crear notificaciones para TENS y Médicos
         paciente_nombre = f"{ficha.paciente.nombres} {ficha.paciente.apellidos}" if not ficha.paciente.es_nn else f"Paciente NN ({ficha.paciente.id_temporal})"
@@ -319,6 +355,20 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
         
         ficha.estado = nuevo_estado
         ficha.save()
+        
+        # Registrar cambio de estado en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='alta' if nuevo_estado == 'dado_de_alta' else 'editar',
+            modelo='FichaEmergencia',
+            objeto_id=ficha.id,
+            detalles={
+                'estado_anterior': estado_anterior,
+                'estado_nuevo': nuevo_estado,
+                'paciente': str(ficha.paciente)
+            },
+            ip_address=get_client_ip(request)
+        )
         
         # Si es dado de alta, liberar la cama automáticamente
         if nuevo_estado == 'dado_de_alta':
@@ -1302,6 +1352,20 @@ class CamaViewSet(viewsets.ModelViewSet):
             modelo='Cama',
             objeto_id=cama.id,
             detalles={'numero': cama.numero, 'estado': cama.estado},
+            ip_address=get_client_ip(self.request)
+        )
+    
+    def perform_destroy(self, instance):
+        """Registrar eliminación en auditoría"""
+        cama_info = {'numero': instance.numero, 'tipo': instance.tipo}
+        cama_id = instance.id
+        instance.delete()
+        AuditLog.objects.create(
+            usuario=self.request.user,
+            accion='eliminar',
+            modelo='Cama',
+            objeto_id=cama_id,
+            detalles=cama_info,
             ip_address=get_client_ip(self.request)
         )
     
