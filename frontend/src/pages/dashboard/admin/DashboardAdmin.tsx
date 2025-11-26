@@ -24,7 +24,6 @@ export default function AdministradorDashboard() {
   const [estadisticas, setEstadisticas] = useState<any>(null)
   const [fichasActivas, setFichasActivas] = useState<any[]>([])
   const [fichasAtendidas, setFichasAtendidas] = useState<any[]>([])
-  const [pacientesHoy, setPacientesHoy] = useState(0)
   const [pacientesTotal, setPacientesTotal] = useState(0)
   const [solicitudesPendientes, setSolicitudesPendientes] = useState(0)
   const [tiempoEsperaPromedio, setTiempoEsperaPromedio] = useState(0)
@@ -49,7 +48,7 @@ export default function AdministradorDashboard() {
   const [camasUCI, setCamasUCI] = useState(10)
   const [salasEmergencia, setSalasEmergencia] = useState(5)
   const [boxesAtencion, setBoxesAtencion] = useState(15)
-  const [configId, setConfigId] = useState<number | null>(null)
+  const [, setConfigId] = useState<number | null>(null)
   
   // Formulario de usuario
   const [formUsuario, setFormUsuario] = useState({

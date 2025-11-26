@@ -21,7 +21,6 @@ import {
   Eye,
   Trash2,
   FolderOpen,
-  X,
   ZoomIn,
   ZoomOut,
   RotateCw,

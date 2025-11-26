@@ -159,14 +159,14 @@ export default function MedicoDashboard() {
     tipoAlta: "",
     destinoDerivacion: ""
   })
-  const [diagnosticoGuardado, setDiagnosticoGuardado] = useState(false)
+  const [, setDiagnosticoGuardado] = useState(false)
   
   // Estados para gestión de camas
   const [camasDisponibles, setCamasDisponibles] = useState<any[]>([])
   const [modalCamasOpen, setModalCamasOpen] = useState(false)
   const [fichaParaCama, setFichaParaCama] = useState<any>(null)
   const [tipoCamaFiltro, setTipoCamaFiltro] = useState("all")
-  const [tipoCamaRequerida, setTipoCamaRequerida] = useState<"general" | "uci">("general")
+  const [, setTipoCamaRequerida] = useState<"general" | "uci">("general")
   
   // Estados para editar receta médica
   const [modalRecetaOpen, setModalRecetaOpen] = useState(false)
@@ -176,7 +176,7 @@ export default function MedicoDashboard() {
   
   // Estados para ver exámenes solicitados
   const [modalVerExamenesOpen, setModalVerExamenesOpen] = useState(false)
-  const [fichaParaVerExamenes, setFichaParaVerExamenes] = useState<any>(null)
+  const [, setFichaParaVerExamenes] = useState<any>(null)
   const [examenesDelPaciente, setExamenesDelPaciente] = useState<any[]>([])
   const [cargandoExamenes, setCargandoExamenes] = useState(false)
   
@@ -799,29 +799,6 @@ export default function MedicoDashboard() {
   }
 
   if (!user) return null
-
-  // Funciones auxiliares
-  const getPrioridadColor = (prioridad: string) => {
-    switch (prioridad) {
-      case "C1": return "bg-red-500"
-      case "C2": return "bg-orange-500"
-      case "C3": return "bg-yellow-500"
-      case "C4": return "bg-green-500"
-      case "C5": return "bg-slate-500"
-      default: return "bg-slate-500"
-    }
-  }
-
-  const getPrioridadLabel = (prioridad: string) => {
-    switch (prioridad) {
-      case "C1": return "C1: Urgencia vital"
-      case "C2": return "C2: Riesgo vital"
-      case "C3": return "C3: Patología urgente"
-      case "C4": return "C4: Urgencia relativa"
-      case "C5": return "C5: No urgente"
-      default: return prioridad
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">

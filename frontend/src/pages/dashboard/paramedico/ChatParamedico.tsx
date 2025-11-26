@@ -16,13 +16,10 @@ import {
   Loader2,
   Check,
   CheckCheck,
-  Phone,
-  MapPin,
   Clock,
-  AlertTriangle,
-  X,
   FileText,
   Image as ImageIcon,
+  X,
 } from "lucide-react"
 
 interface Mensaje {

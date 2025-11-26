@@ -19,10 +19,8 @@ import {
   AlertTriangle,
   Heart,
   Trash2,
-  Check,
   CheckCheck,
   Loader2,
-  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 

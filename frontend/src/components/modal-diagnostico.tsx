@@ -40,7 +40,7 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
         title: "PDF descargado",
         description: "La ficha completa ha sido descargada",
       })
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "No se pudo descargar la ficha",
@@ -57,7 +57,7 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
         title: "PDF descargado",
         description: "La receta médica ha sido descargada",
       })
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "No se pudo descargar la receta",
@@ -74,7 +74,7 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
         title: "PDF descargado",
         description: "La orden de exámenes ha sido descargada",
       })
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "No se pudo descargar la orden de exámenes",
@@ -91,7 +91,7 @@ export function ModalDiagnostico({ open, onOpenChange, ficha, onConfirm }: Modal
         title: "PDF descargado",
         description: "El documento de alta médica ha sido descargado",
       })
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "No se pudo descargar el alta médica",
