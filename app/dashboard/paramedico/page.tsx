@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
+import { ChatFlotante } from "@/components/chat-flotante"
 
 export default function ParamedicoDashboard() {
   const router = useRouter()
@@ -24,6 +25,7 @@ export default function ParamedicoDashboard() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [solicitudes, setSolicitudes] = useState<any[]>([])
+  const [fichaActiva, setFichaActiva] = useState<number | null>(null)
 
   // Estados del formulario de paciente
   const [pacienteData, setPacienteData] = useState({
@@ -223,6 +225,63 @@ export default function ParamedicoDashboard() {
         return
       }
       
+      // Validar presión arterial sistólica (rango normal: 60-250 mmHg)
+      const sistolica = parseInt(signosData.presion_sistolica)
+      if (sistolica < 60 || sistolica > 250) {
+        setError("⚠️ La Presión Sistólica debe estar entre 60 y 250 mmHg. Por favor corrija el valor.")
+        return
+      }
+      
+      // Validar presión arterial diastólica (rango normal: 40-150 mmHg)
+      if (signosData.presion_diastolica) {
+        const diastolica = parseInt(signosData.presion_diastolica)
+        if (diastolica < 40 || diastolica > 150) {
+          setError("⚠️ La Presión Diastólica debe estar entre 40 y 150 mmHg. Por favor corrija el valor.")
+          return
+        }
+      }
+      
+      // Validar frecuencia cardíaca (rango normal: 30-220 lpm)
+      const fc = parseInt(signosData.frecuencia_cardiaca)
+      if (fc < 30 || fc > 220) {
+        setError("⚠️ La Frecuencia Cardíaca debe estar entre 30 y 220 lpm. Por favor corrija el valor.")
+        return
+      }
+      
+      // Validar frecuencia respiratoria (rango normal: 8-60 rpm)
+      if (signosData.frecuencia_respiratoria) {
+        const fr = parseInt(signosData.frecuencia_respiratoria)
+        if (fr < 8 || fr > 60) {
+          setError("⚠️ La Frecuencia Respiratoria debe estar entre 8 y 60 rpm. Por favor corrija el valor.")
+          return
+        }
+      }
+      
+      // Validar saturación O2 (rango normal: 50-100%)
+      const sat = parseInt(signosData.saturacion_o2)
+      if (sat < 50 || sat > 100) {
+        setError("⚠️ La Saturación de O₂ debe estar entre 50% y 100%. Por favor corrija el valor.")
+        return
+      }
+      
+      // Validar temperatura (rango normal: 32-42°C)
+      if (signosData.temperatura) {
+        const temp = parseFloat(signosData.temperatura)
+        if (temp < 32 || temp > 42) {
+          setError("⚠️ La Temperatura debe estar entre 32°C y 42°C. Por favor corrija el valor.")
+          return
+        }
+      }
+      
+      // Validar glucosa (rango normal: 20-600 mg/dL)
+      if (signosData.glucosa) {
+        const glucosa = parseInt(signosData.glucosa)
+        if (glucosa < 20 || glucosa > 600) {
+          setError("⚠️ La Glucosa debe estar entre 20 y 600 mg/dL. Por favor corrija el valor.")
+          return
+        }
+      }
+      
       // Validar escala de Glasgow (debe estar entre 3 y 15)
       if (signosData.escala_glasgow && (parseInt(signosData.escala_glasgow) < 3 || parseInt(signosData.escala_glasgow) > 15)) {
         setError("⚠️ La Escala de Glasgow debe estar entre 3 y 15. Por favor corrija el valor.")
@@ -261,7 +320,8 @@ export default function ParamedicoDashboard() {
       const response = await fichasAPI.crear(fichaCompleta)
       
       if (response && response.id) {
-        setSuccess(`¡Ficha #${response.id} enviada al hospital exitosamente! Ahora puede solicitar medicamentos si es necesario.`)
+        setFichaActiva(response.id)
+        setSuccess(`¡Ficha #${response.id} enviada al hospital exitosamente! Ahora puede solicitar medicamentos y usar el chat para comunicarse con el equipo médico.`)
       } else {
         setSuccess("¡Ficha enviada al hospital exitosamente!")
       }
@@ -1007,6 +1067,20 @@ export default function ParamedicoDashboard() {
       </main>
 
       <ModalBuscarPaciente open={modalBuscarOpen} onOpenChange={setModalBuscarOpen} />
+      
+      {/* Chat flotante - solo visible cuando hay una ficha activa */}
+      {fichaActiva && user && (
+        <ChatFlotante
+          fichaId={fichaActiva}
+          usuarioActual={{
+            id: user.id,
+            username: user.username,
+            first_name: user.first_name || user.username,
+            last_name: user.last_name || "",
+            rol: user.rol,
+          }}
+        />
+      )}
     </div>
   )
 }

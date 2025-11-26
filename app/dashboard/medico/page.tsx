@@ -16,6 +16,7 @@ import { ModalExamenes } from "@/components/modal-examenes"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ChatFlotante } from "@/components/chat-flotante"
 import { toast } from "@/hooks/use-toast"
 
 export default function MedicoDashboard() {
@@ -1266,6 +1267,20 @@ export default function MedicoDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* Chat flotante - solo visible cuando hay una ficha seleccionada */}
+      {fichaSeleccionada && user && (
+        <ChatFlotante
+          fichaId={fichaSeleccionada.id}
+          usuarioActual={{
+            id: user.id,
+            username: user.username,
+            first_name: user.first_name || user.username,
+            last_name: user.last_name || "",
+            rol: user.rol,
+          }}
+        />
+      )}
     </div>
   )
 }

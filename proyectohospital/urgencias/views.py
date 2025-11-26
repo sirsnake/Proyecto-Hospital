@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.contrib.auth import login, logout
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -11,14 +12,18 @@ from django.template.loader import render_to_string
 from weasyprint import HTML
 import io
 from .models import (Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, 
-                     Anamnesis, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama)
+                     Anamnesis, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama,
+                     ArchivoAdjunto, MensajeChat, Notificacion)
 from .serializers import (
     UsuarioSerializer, LoginSerializer, PacienteSerializer, 
     FichaEmergenciaSerializer, FichaEmergenciaCreateSerializer,
     SignosVitalesSerializer, SignosVitalesCreateSerializer,
     SolicitudMedicamentoSerializer, AnamnesisSerializer, 
     DiagnosticoSerializer, SolicitudExamenSerializer, AuditLogSerializer,
-    ConfiguracionHospitalSerializer, CamaSerializer
+    ConfiguracionHospitalSerializer, CamaSerializer,
+    ArchivoAdjuntoSerializer, ArchivoAdjuntoUploadSerializer,
+    MensajeChatSerializer, MensajeChatCreateSerializer,
+    NotificacionSerializer
 )
 
 
@@ -934,6 +939,11 @@ class CamaViewSet(viewsets.ModelViewSet):
         if cama.estado != 'disponible':
             return Response({'error': 'La cama no está disponible'}, status=status.HTTP_400_BAD_REQUEST)
         
+        # Si la ficha ya tiene una cama asignada, liberarla primero
+        cama_anterior = Cama.objects.filter(ficha_actual=ficha).first()
+        if cama_anterior:
+            cama_anterior.liberar()
+        
         cama.asignar(ficha, request.user)
         
         # Registrar en auditoría
@@ -979,3 +989,229 @@ class CamaViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(cama)
         return Response(serializer.data)
+
+
+class ArchivoAdjuntoViewSet(viewsets.ModelViewSet):
+    """ViewSet para gestión de archivos adjuntos"""
+    queryset = ArchivoAdjunto.objects.all()
+    serializer_class = ArchivoAdjuntoSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    
+    def get_serializer_class(self):
+        if self.action in ['create', 'upload']:
+            return ArchivoAdjuntoUploadSerializer
+        return ArchivoAdjuntoSerializer
+    
+    def get_queryset(self):
+        queryset = ArchivoAdjunto.objects.all()
+        ficha_id = self.request.query_params.get('ficha')
+        if ficha_id:
+            queryset = queryset.filter(ficha_id=ficha_id)
+        return queryset.order_by('-fecha_subida')
+    
+    def perform_create(self, serializer):
+        serializer.save()
+    
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def upload(self, request):
+        """Subir un nuevo archivo adjunto"""
+        serializer = ArchivoAdjuntoUploadSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            archivo = serializer.save()
+            return Response(ArchivoAdjuntoSerializer(archivo).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def por_ficha(self, request):
+        """Obtener todos los archivos de una ficha"""
+        ficha_id = request.query_params.get('ficha_id')
+        if not ficha_id:
+            return Response({'error': 'Debe proporcionar ficha_id'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        archivos = ArchivoAdjunto.objects.filter(ficha_id=ficha_id).order_by('-fecha_subida')
+        serializer = self.get_serializer(archivos, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Descargar un archivo"""
+        archivo = self.get_object()
+        response = FileResponse(archivo.archivo.open('rb'), as_attachment=True)
+        response['Content-Disposition'] = f'attachment; filename="{archivo.nombre_original}"'
+        return response
+
+
+class MensajeChatViewSet(viewsets.ModelViewSet):
+    """ViewSet para gestión de mensajes de chat"""
+    queryset = MensajeChat.objects.all()
+    serializer_class = MensajeChatSerializer
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return MensajeChatCreateSerializer
+        return MensajeChatSerializer
+    
+    def get_queryset(self):
+        queryset = MensajeChat.objects.all()
+        ficha_id = self.request.query_params.get('ficha')
+        if ficha_id:
+            queryset = queryset.filter(ficha_id=ficha_id)
+        return queryset.order_by('fecha_envio')
+    
+    def perform_create(self, serializer):
+        serializer.save()
+    
+    @action(detail=False, methods=['get'])
+    def por_ficha(self, request):
+        """Obtener todos los mensajes de una ficha"""
+        ficha_id = request.query_params.get('ficha_id')
+        if not ficha_id:
+            return Response({'error': 'Debe proporcionar ficha_id'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        mensajes = MensajeChat.objects.filter(ficha_id=ficha_id).order_by('fecha_envio')
+        serializer = self.get_serializer(mensajes, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def no_leidos(self, request):
+        """Obtener conteo de mensajes no leídos por ficha"""
+        user = request.user
+        ficha_id = request.query_params.get('ficha_id')
+        
+        queryset = MensajeChat.objects.exclude(autor=user).exclude(leido_por=user)
+        if ficha_id:
+            queryset = queryset.filter(ficha_id=ficha_id)
+        
+        # Agrupar por ficha
+        from django.db.models import Count
+        conteos = queryset.values('ficha').annotate(no_leidos=Count('id'))
+        
+        return Response(list(conteos))
+    
+    @action(detail=False, methods=['post'])
+    def marcar_leidos(self, request):
+        """Marcar mensajes como leídos"""
+        mensaje_ids = request.data.get('mensaje_ids', [])
+        user = request.user
+        
+        mensajes = MensajeChat.objects.filter(id__in=mensaje_ids)
+        for mensaje in mensajes:
+            mensaje.marcar_como_leido(user)
+        
+        return Response({'status': 'ok', 'marcados': len(mensaje_ids)})
+
+
+class NotificacionViewSet(viewsets.ModelViewSet):
+    """ViewSet para gestión de notificaciones"""
+    serializer_class = NotificacionSerializer
+    
+    def get_queryset(self):
+        """Solo notificaciones del usuario actual"""
+        return Notificacion.objects.filter(usuario=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def no_leidas(self, request):
+        """Obtener notificaciones no leídas"""
+        notificaciones = self.get_queryset().filter(leida=False)
+        serializer = self.get_serializer(notificaciones, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def conteo(self, request):
+        """Obtener conteo de notificaciones no leídas"""
+        count = self.get_queryset().filter(leida=False).count()
+        return Response({'no_leidas': count})
+    
+    @action(detail=False, methods=['get'])
+    def recientes(self, request):
+        """Obtener las últimas 50 notificaciones"""
+        notificaciones = self.get_queryset()[:50]
+        serializer = self.get_serializer(notificaciones, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def marcar_leida(self, request, pk=None):
+        """Marcar una notificación como leída"""
+        notificacion = self.get_object()
+        notificacion.marcar_leida()
+        return Response({'status': 'ok'})
+    
+    @action(detail=False, methods=['post'])
+    def marcar_todas_leidas(self, request):
+        """Marcar todas las notificaciones como leídas"""
+        count = self.get_queryset().filter(leida=False).update(
+            leida=True, 
+            fecha_leida=timezone.now()
+        )
+        return Response({'status': 'ok', 'marcadas': count})
+    
+    @action(detail=False, methods=['post'])
+    def marcar_leidas(self, request):
+        """Marcar múltiples notificaciones como leídas"""
+        ids = request.data.get('ids', [])
+        count = self.get_queryset().filter(id__in=ids, leida=False).update(
+            leida=True,
+            fecha_leida=timezone.now()
+        )
+        return Response({'status': 'ok', 'marcadas': count})
+    
+    @action(detail=False, methods=['delete'])
+    def eliminar_leidas(self, request):
+        """Eliminar todas las notificaciones leídas"""
+        count, _ = self.get_queryset().filter(leida=True).delete()
+        return Response({'status': 'ok', 'eliminadas': count})
+
+
+# ============================================
+# ENDPOINT DE POLLING PARA CHAT Y NOTIFICACIONES
+# ============================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def poll_updates(request):
+    """
+    Endpoint de polling para obtener actualizaciones de chat y notificaciones.
+    El frontend debe llamar este endpoint cada 2-3 segundos.
+    """
+    user = request.user
+    ficha_id = request.query_params.get('ficha_id')
+    last_message_id = request.query_params.get('last_message_id', 0)
+    last_notification_id = request.query_params.get('last_notification_id', 0)
+    
+    response_data = {
+        'mensajes': [],
+        'notificaciones': [],
+        'notificaciones_no_leidas': 0,
+    }
+    
+    # Obtener nuevos mensajes si hay ficha_id
+    if ficha_id:
+        nuevos_mensajes = MensajeChat.objects.filter(
+            ficha_id=ficha_id,
+            id__gt=int(last_message_id)
+        ).order_by('fecha_envio')
+        
+        response_data['mensajes'] = MensajeChatSerializer(
+            nuevos_mensajes, 
+            many=True,
+            context={'request': request}
+        ).data
+    
+    # Obtener nuevas notificaciones
+    nuevas_notificaciones = Notificacion.objects.filter(
+        usuario=user,
+        id__gt=int(last_notification_id)
+    ).order_by('-fecha_creacion')[:20]
+    
+    response_data['notificaciones'] = NotificacionSerializer(
+        nuevas_notificaciones,
+        many=True
+    ).data
+    
+    # Conteo de notificaciones no leídas
+    response_data['notificaciones_no_leidas'] = Notificacion.objects.filter(
+        usuario=user,
+        leida=False
+    ).count()
+    
+    return Response(response_data)

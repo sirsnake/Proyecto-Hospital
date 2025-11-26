@@ -359,3 +359,226 @@ class AuditLog(models.Model):
     def __str__(self):
         usuario_str = self.usuario.get_full_name() if self.usuario else "Sistema"
         return f"{usuario_str} - {self.get_accion_display()} - {self.modelo} #{self.objeto_id or 'N/A'} - {self.timestamp.strftime('%d/%m/%Y %H:%M')}"
+
+
+def archivo_upload_path(instance, filename):
+    """Genera la ruta de subida para archivos adjuntos"""
+    import os
+    from django.utils import timezone
+    ficha_id = instance.ficha.id if instance.ficha else 'general'
+    fecha = timezone.now().strftime('%Y/%m')
+    return f'archivos_fichas/{ficha_id}/{fecha}/{filename}'
+
+
+class ArchivoAdjunto(models.Model):
+    """Archivos adjuntos a fichas de emergencia (imágenes, PDFs, documentos)"""
+    TIPO_CHOICES = [
+        ('imagen', 'Imagen'),
+        ('pdf', 'PDF'),
+        ('documento', 'Documento'),
+        ('otro', 'Otro'),
+    ]
+    
+    ficha = models.ForeignKey(FichaEmergencia, on_delete=models.CASCADE, related_name='archivos')
+    subido_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='archivos_subidos')
+    
+    archivo = models.FileField(upload_to=archivo_upload_path)
+    nombre_original = models.CharField(max_length=255)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    tamano = models.BigIntegerField(help_text="Tamaño en bytes")
+    mime_type = models.CharField(max_length=100, blank=True, null=True)
+    
+    descripcion = models.TextField(blank=True, null=True)
+    
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'Archivo Adjunto'
+        verbose_name_plural = 'Archivos Adjuntos'
+        ordering = ['-fecha_subida']
+    
+    def __str__(self):
+        return f"{self.nombre_original} - Ficha #{self.ficha.id}"
+    
+    def get_extension(self):
+        import os
+        return os.path.splitext(self.nombre_original)[1].lower()
+    
+    @staticmethod
+    def get_tipo_from_mime(mime_type, filename):
+        """Determina el tipo de archivo basado en mime_type o extensión"""
+        if mime_type:
+            if mime_type.startswith('image/'):
+                return 'imagen'
+            elif mime_type == 'application/pdf':
+                return 'pdf'
+            elif mime_type in ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                              'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']:
+                return 'documento'
+        
+        # Fallback por extensión
+        import os
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']:
+            return 'imagen'
+        elif ext == '.pdf':
+            return 'pdf'
+        elif ext in ['.doc', '.docx', '.xls', '.xlsx', '.odt', '.ods']:
+            return 'documento'
+        
+        return 'otro'
+
+
+class MensajeChat(models.Model):
+    """Mensajes de chat entre paramédico, TENS y médico por cada ficha"""
+    ficha = models.ForeignKey(FichaEmergencia, on_delete=models.CASCADE, related_name='mensajes')
+    autor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='mensajes_enviados')
+    
+    contenido = models.TextField()
+    archivo_adjunto = models.ForeignKey(ArchivoAdjunto, on_delete=models.SET_NULL, null=True, blank=True, related_name='mensajes')
+    
+    leido_por = models.ManyToManyField(Usuario, blank=True, related_name='mensajes_leidos')
+    
+    fecha_envio = models.DateTimeField(auto_now_add=True)
+    editado = models.BooleanField(default=False)
+    fecha_edicion = models.DateTimeField(blank=True, null=True)
+    
+    class Meta:
+        verbose_name = 'Mensaje de Chat'
+        verbose_name_plural = 'Mensajes de Chat'
+        ordering = ['fecha_envio']
+        indexes = [
+            models.Index(fields=['ficha', 'fecha_envio']),
+        ]
+    
+    def __str__(self):
+        autor_nombre = self.autor.get_full_name() if self.autor else "Sistema"
+        return f"[Ficha #{self.ficha.id}] {autor_nombre}: {self.contenido[:50]}..."
+    
+    def marcar_como_leido(self, usuario):
+        """Marca el mensaje como leído por un usuario"""
+        if usuario not in self.leido_por.all():
+            self.leido_por.add(usuario)
+
+
+class Notificacion(models.Model):
+    """Modelo para notificaciones del sistema"""
+    
+    TIPO_CHOICES = [
+        ('nueva_ficha', 'Nueva Ficha de Emergencia'),
+        ('ficha_llegada', 'Paciente Llegó al Hospital'),
+        ('solicitud_medicamento', 'Solicitud de Medicamento'),
+        ('medicamento_autorizado', 'Medicamento Autorizado'),
+        ('medicamento_rechazado', 'Medicamento Rechazado'),
+        ('nuevos_signos', 'Nuevos Signos Vitales'),
+        ('diagnostico', 'Nuevo Diagnóstico'),
+        ('mensaje_chat', 'Nuevo Mensaje'),
+        ('examen_solicitado', 'Examen Solicitado'),
+        ('cama_asignada', 'Cama Asignada'),
+        ('alta_paciente', 'Alta de Paciente'),
+        ('sistema', 'Notificación del Sistema'),
+    ]
+    
+    PRIORIDAD_CHOICES = [
+        ('baja', 'Baja'),
+        ('media', 'Media'),
+        ('alta', 'Alta'),
+        ('urgente', 'Urgente'),
+    ]
+    
+    # Destinatario de la notificación
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.CASCADE,
+        related_name='notificaciones'
+    )
+    
+    # Tipo y contenido
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES)
+    titulo = models.CharField(max_length=200)
+    mensaje = models.TextField()
+    prioridad = models.CharField(max_length=10, choices=PRIORIDAD_CHOICES, default='media')
+    
+    # Referencias opcionales
+    ficha = models.ForeignKey(
+        FichaEmergencia,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notificaciones'
+    )
+    
+    # Estado
+    leida = models.BooleanField(default=False)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_leida = models.DateTimeField(null=True, blank=True)
+    
+    # Datos adicionales en JSON (para links, acciones, etc.)
+    datos_extra = models.JSONField(default=dict, blank=True)
+    
+    class Meta:
+        ordering = ['-fecha_creacion']
+        verbose_name = 'Notificación'
+        verbose_name_plural = 'Notificaciones'
+        indexes = [
+            models.Index(fields=['usuario', 'leida']),
+            models.Index(fields=['usuario', 'fecha_creacion']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_tipo_display()} - {self.usuario.username}"
+    
+    def marcar_leida(self):
+        """Marca la notificación como leída"""
+        from django.utils import timezone
+        if not self.leida:
+            self.leida = True
+            self.fecha_leida = timezone.now()
+            self.save(update_fields=['leida', 'fecha_leida'])
+    
+    @classmethod
+    def crear_notificacion(cls, usuario, tipo, titulo, mensaje, ficha=None, prioridad='media', datos_extra=None):
+        """Helper para crear notificaciones"""
+        return cls.objects.create(
+            usuario=usuario,
+            tipo=tipo,
+            titulo=titulo,
+            mensaje=mensaje,
+            ficha=ficha,
+            prioridad=prioridad,
+            datos_extra=datos_extra or {}
+        )
+    
+    @classmethod
+    def notificar_rol(cls, rol, tipo, titulo, mensaje, ficha=None, prioridad='media', datos_extra=None):
+        """Crear notificación para todos los usuarios de un rol"""
+        usuarios = Usuario.objects.filter(rol=rol, is_active=True)
+        notificaciones = []
+        for usuario in usuarios:
+            notificaciones.append(cls(
+                usuario=usuario,
+                tipo=tipo,
+                titulo=titulo,
+                mensaje=mensaje,
+                ficha=ficha,
+                prioridad=prioridad,
+                datos_extra=datos_extra or {}
+            ))
+        return cls.objects.bulk_create(notificaciones)
+    
+    @classmethod
+    def notificar_roles(cls, roles, tipo, titulo, mensaje, ficha=None, prioridad='media', datos_extra=None):
+        """Crear notificación para todos los usuarios de varios roles"""
+        usuarios = Usuario.objects.filter(rol__in=roles, is_active=True)
+        notificaciones = []
+        for usuario in usuarios:
+            notificaciones.append(cls(
+                usuario=usuario,
+                tipo=tipo,
+                titulo=titulo,
+                mensaje=mensaje,
+                ficha=ficha,
+                prioridad=prioridad,
+                datos_extra=datos_extra or {}
+            ))
+        return cls.objects.bulk_create(notificaciones)

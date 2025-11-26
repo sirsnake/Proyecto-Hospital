@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
+import { ChatFlotante } from "@/components/chat-flotante"
 import { toast } from "@/hooks/use-toast"
 
 export default function TensDashboard() {
@@ -44,6 +45,9 @@ export default function TensDashboard() {
   const [modalCamasOpen, setModalCamasOpen] = useState(false)
   const [fichaParaCama, setFichaParaCama] = useState<any>(null)
   const [tipoCamaFiltro, setTipoCamaFiltro] = useState('all')
+  
+  // Estado para el chat - ficha actualmente seleccionada para comunicarse
+  const [fichaParaChat, setFichaParaChat] = useState<number | null>(null)
 
   useEffect(() => {
     const currentUser = getSession()
@@ -495,6 +499,16 @@ export default function TensDashboard() {
                               </svg>
                               ✅ Paciente Ya Llegó
                             </Button>
+                            <Button 
+                              variant={fichaParaChat === ficha.id ? "default" : "outline"}
+                              className={fichaParaChat === ficha.id ? "bg-blue-600 hover:bg-blue-700" : "border-blue-500 text-blue-400 hover:bg-blue-500/20"}
+                              onClick={() => setFichaParaChat(fichaParaChat === ficha.id ? null : ficha.id)}
+                            >
+                              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                              💬 Chat
+                            </Button>
                           </div>
                         </CardContent>
                       </Card>
@@ -800,6 +814,17 @@ export default function TensDashboard() {
                               </svg>
                               🛏️ Asignar Cama
                             </Button>
+                            <Button
+                              size="sm"
+                              variant={fichaParaChat === ficha.id ? "default" : "outline"}
+                              className={fichaParaChat === ficha.id ? "bg-purple-600 hover:bg-purple-700" : "border-purple-500 text-purple-400 hover:bg-purple-500/20"}
+                              onClick={() => setFichaParaChat(fichaParaChat === ficha.id ? null : ficha.id)}
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                              💬 Chat
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -905,6 +930,20 @@ export default function TensDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* Chat flotante - solo visible cuando hay una ficha seleccionada */}
+      {fichaParaChat && user && (
+        <ChatFlotante
+          fichaId={fichaParaChat}
+          usuarioActual={{
+            id: user.id,
+            username: user.username,
+            first_name: user.first_name || user.username,
+            last_name: user.last_name || "",
+            rol: user.rol,
+          }}
+        />
+      )}
     </div>
   )
 }
