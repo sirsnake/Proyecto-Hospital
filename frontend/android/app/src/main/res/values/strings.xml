@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Hospital Urgencias</string>
-    <string name="title_activity_main">Hospital Urgencias</string>
-    <string name="package_name">com.hospital.urgencias</string>
-    <string name="custom_url_scheme">com.hospital.urgencias</string>
-</resources>
