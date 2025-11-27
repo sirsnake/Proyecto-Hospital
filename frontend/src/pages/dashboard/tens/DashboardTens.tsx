@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI, signosVitalesAPI, camasAPI, notificacionesAPI, chatAPI, pacientesAPI, solicitudesExamenesAPI, triageAPI, medicosAPI } from "@/lib/api"
+import { authAPI, fichasAPI, signosVitalesAPI, camasAPI, chatAPI, pacientesAPI, solicitudesExamenesAPI, triageAPI, medicosAPI, turnosAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -14,10 +14,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 import { ChatPanel } from "@/components/chat-panel"
+import { NotificationsPanel } from "@/components/notifications-panel"
+import { ModalTurno } from "@/components/modal-turno"
+import { useTurno } from "@/hooks/use-turno"
 import { toast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 import { 
-  Bell, 
   Activity, 
   Heart, 
   Thermometer, 
@@ -51,7 +53,8 @@ import {
   Save,
   ClipboardList,
   ShieldAlert,
-  Zap
+  Zap,
+  History
 } from "lucide-react"
 
 // Componente de Signo Vital Individual
@@ -131,8 +134,6 @@ export default function TensDashboard() {
   const [success, setSuccess] = useState("")
   const [fichaEditando, setFichaEditando] = useState<number | null>(null)
   const [fichaExpandida, setFichaExpandida] = useState<number | null>(null)
-  const [notificaciones, setNotificaciones] = useState<any[]>([])
-  const [mostrarNotificaciones, setMostrarNotificaciones] = useState(false)
   const [nuevosSignos, setNuevosSignos] = useState({
     presionSistolica: "",
     presionDiastolica: "",
@@ -214,6 +215,11 @@ export default function TensDashboard() {
   })
   const [guardandoPaciente, setGuardandoPaciente] = useState(false)
   
+  // Estados para historial del paciente
+  const [modalHistorialOpen, setModalHistorialOpen] = useState(false)
+  const [historialPaciente, setHistorialPaciente] = useState<any>(null)
+  const [cargandoHistorial, setCargandoHistorial] = useState(false)
+  
   // Estados para exámenes
   const [examenesPendientes, setExamenesPendientes] = useState<any[]>([])
   const [examenesEnProceso, setExamenesEnProceso] = useState<any[]>([])
@@ -247,43 +253,31 @@ export default function TensDashboard() {
     recursos_necesarios: "0",
     observaciones: ""
   })
+
+  // Hook de control de turno
+  const { 
+    turnoInfo, 
+    mostrarModal: mostrarModalTurno, 
+    enTurno, 
+    cerrarModal: cerrarModalTurno 
+  } = useTurno('tens')
   
-  // Ref para el polling de notificaciones
-  const notificacionesPollingRef = useRef<NodeJS.Timeout | null>(null)
-
-  // Cargar notificaciones
-  const cargarNotificaciones = useCallback(async () => {
-    try {
-      const data = await notificacionesAPI.noLeidas()
-      setNotificaciones(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error('Error al cargar notificaciones:', err)
-    }
-  }, [])
-
   useEffect(() => {
     const currentUser = getSession()
     if (!currentUser || currentUser.rol !== "tens") {
-      navigate("/")
+      navigate("/", { replace: true })
       return
     }
     setUser(currentUser)
     cargarFichas()
-    cargarNotificaciones()
     
     // Recargar fichas cada 60 segundos
     const interval = setInterval(cargarFichas, 60000)
     
-    // Polling de notificaciones cada 10 segundos
-    notificacionesPollingRef.current = setInterval(cargarNotificaciones, 10000)
-    
     return () => {
       clearInterval(interval)
-      if (notificacionesPollingRef.current) {
-        clearInterval(notificacionesPollingRef.current)
-      }
     }
-  }, [navigate, cargarNotificaciones])
+  }, [navigate])
 
   // Recargar exámenes cuando se cambia a la pestaña de exámenes
   useEffect(() => {
@@ -507,6 +501,21 @@ export default function TensDashboard() {
     return colores[nivel] || "bg-slate-500"
   }
 
+  // Función para cargar historial del paciente
+  const cargarHistorialPaciente = async (pacienteId: number) => {
+    try {
+      setCargandoHistorial(true)
+      const historial = await pacientesAPI.historial(pacienteId)
+      setHistorialPaciente(historial)
+      setModalHistorialOpen(true)
+    } catch (err: any) {
+      console.error('Error al cargar historial:', err)
+      toast({ title: "Error", description: "No se pudo cargar el historial del paciente", variant: "destructive" })
+    } finally {
+      setCargandoHistorial(false)
+    }
+  }
+
   const cargarCamasDisponibles = async (tipo?: string) => {
     try {
       const camas = await camasAPI.disponibles(tipo)
@@ -542,7 +551,8 @@ export default function TensDashboard() {
   // Funciones para asignación de médicos
   const cargarMedicos = async () => {
     try {
-      const medicos = await medicosAPI.listar()
+      // Solo cargar médicos que están en turno hoy
+      const medicos = await medicosAPI.listar(true)
       setMedicosDisponibles(Array.isArray(medicos) ? medicos : [])
     } catch (err: any) {
       console.error('Error al cargar médicos:', err)
@@ -796,6 +806,26 @@ export default function TensDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* Modal de verificación de turno */}
+      <ModalTurno
+        open={mostrarModalTurno}
+        turnoInfo={turnoInfo}
+        onTurnoIniciado={cerrarModalTurno}
+        onSalir={() => {
+          cerrarModalTurno()
+          navigate('/')
+        }}
+      />
+
+      {/* Indicador de turno */}
+      {enTurno && turnoInfo?.turno_actual && (
+        <div className="fixed bottom-4 left-4 z-40 bg-emerald-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 shadow-lg">
+          <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          En turno: {turnoInfo.turno_actual.tipo_turno_display}
+          {turnoInfo.turno_actual.es_voluntario && ' (Voluntario)'}
+        </div>
+      )}
+
       {/* Header Mejorado */}
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3">
@@ -828,110 +858,25 @@ export default function TensDashboard() {
                 </div>
               </div>
 
-              {/* Botón de notificaciones */}
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative text-slate-400 hover:text-white hover:bg-slate-800"
-                  onClick={() => setMostrarNotificaciones(!mostrarNotificaciones)}
-                >
-                  <Bell className="w-5 h-5" />
-                  {notificaciones.length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[10px] font-bold flex items-center justify-center text-white">
-                      {notificaciones.length > 9 ? "9+" : notificaciones.length}
-                    </span>
-                  )}
-                </Button>
-                
-                {/* Panel de notificaciones */}
-                {mostrarNotificaciones && (
-                  <div className="absolute right-0 top-12 w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50">
-                    <div className="p-3 border-b border-slate-800 flex items-center justify-between">
-                      <h3 className="font-semibold text-white text-sm">Notificaciones</h3>
-                      <Badge variant="secondary" className="text-xs">{notificaciones.length}</Badge>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                      {notificaciones.length === 0 ? (
-                        <div className="p-8 text-center">
-                          <Bell className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                          <p className="text-sm text-slate-500">Sin notificaciones nuevas</p>
-                          <p className="text-xs text-slate-600 mt-1">Las alertas importantes aparecerán aquí</p>
-                        </div>
-                      ) : (
-                        <>
-                          {notificaciones.map((notif) => (
-                            <div 
-                              key={notif.id} 
-                              className="p-4 border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer transition-colors group"
-                              onClick={async () => {
-                                try {
-                                  await notificacionesAPI.marcarLeida(notif.id)
-                                  cargarNotificaciones()
-                                } catch (err) {
-                                  console.error('Error al marcar notificación:', err)
-                                }
-                              }}
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${
-                                  notif.prioridad === 'alta' || notif.prioridad === 'urgente' ? 'bg-red-500' :
-                                  notif.prioridad === 'media' ? 'bg-amber-500' : 'bg-blue-500'
-                                }`} />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-white">{notif.titulo}</p>
-                                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">{notif.mensaje}</p>
-                                  <div className="flex items-center gap-2 mt-2">
-                                    <Clock className="w-3 h-3 text-slate-500" />
-                                    <span className="text-[10px] text-slate-500">
-                                      {notif.tiempo_transcurrido || new Date(notif.fecha_creacion).toLocaleString('es-CL')}
-                                    </span>
-                                    {notif.ficha && (
-                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                        Ficha #{notif.ficha}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    notificacionesAPI.marcarLeida(notif.id).then(() => cargarNotificaciones())
-                                  }}
-                                >
-                                  <X className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                          <div className="p-3 bg-slate-800/30 border-t border-slate-700">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="w-full text-xs text-slate-400 hover:text-white"
-                              onClick={async () => {
-                                try {
-                                  await notificacionesAPI.marcarTodasLeidas()
-                                  cargarNotificaciones()
-                                  toast({ title: "✅ Notificaciones marcadas como leídas" })
-                                } catch (err) {
-                                  console.error('Error:', err)
-                                }
-                              }}
-                            >
-                              <CheckCircle className="w-3 h-3 mr-2" />
-                              Marcar todas como leídas
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Panel de Notificaciones */}
+              <NotificationsPanel 
+                onNavigateToFicha={(fichaId) => {
+                  const fichaEncontrada = [...fichasEnRuta, ...fichasEnHospital].find(f => f.id === fichaId)
+                  if (fichaEncontrada) {
+                    setFichaExpandida(fichaExpandida === fichaId ? null : fichaId)
+                  }
+                }}
+                onOpenChat={(fichaId) => {
+                  // Abrir chat de la ficha
+                  setFichaParaChat(fichaId)
+                }}
+                onViewSignos={(fichaId) => {
+                  // Expandir ficha para ver/registrar signos vitales
+                  setFichaExpandida(fichaId)
+                  // Abrir el formulario de edición de signos
+                  setFichaEditando(fichaId)
+                }}
+              />
 
               <Button
                 variant="ghost"
@@ -962,7 +907,7 @@ export default function TensDashboard() {
                     console.error('Error al cerrar sesión:', error)
                   } finally {
                     localStorage.removeItem("medical_system_user")
-                    navigate("/")
+                    navigate("/", { replace: true })
                   }
                 }}
                 className="text-slate-400 hover:text-red-400 hover:bg-red-500/10"
@@ -1547,6 +1492,18 @@ export default function TensDashboard() {
                               Editar Triage
                             </Button>
                           )}
+
+                          {/* Botón ver historial del paciente */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10"
+                            onClick={() => cargarHistorialPaciente(ficha.paciente?.id)}
+                            disabled={!ficha.paciente?.id || cargandoHistorial}
+                          >
+                            <History className="w-4 h-4 mr-1.5" />
+                            Historial
+                          </Button>
 
                           {/* Espaciador */}
                           <div className="flex-1" />
@@ -2921,6 +2878,129 @@ Ejemplo:
                   {fichaParaTriage?.triage ? 'Actualizar Triage' : 'Completar Triage'}
                 </>
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Historial del Paciente */}
+      <Dialog open={modalHistorialOpen} onOpenChange={setModalHistorialOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] bg-slate-900 border-slate-800 overflow-hidden flex flex-col" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <History className="w-5 h-5 text-amber-400" />
+              Historial del Paciente
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {historialPaciente?.paciente ? (
+                <>
+                  {historialPaciente.paciente.es_nn 
+                    ? `Paciente NN - ${historialPaciente.paciente.id_temporal}`
+                    : `${historialPaciente.paciente.nombres} ${historialPaciente.paciente.apellidos}`
+                  } - RUT: {historialPaciente.paciente.rut || 'N/A'}
+                </>
+              ) : 'Cargando...'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-2">
+            {historialPaciente?.fichas?.length > 0 ? (
+              <div className="space-y-4">
+                <div className="text-sm text-slate-400 mb-2">
+                  Total de atenciones: <span className="text-white font-medium">{historialPaciente.total_atenciones}</span>
+                </div>
+                {historialPaciente.fichas.map((ficha: any, index: number) => (
+                  <div 
+                    key={ficha.id} 
+                    className={`p-4 rounded-xl border ${index === 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-slate-800/50 border-slate-700'}`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        {index === 0 && (
+                          <Badge className="bg-amber-500 text-white text-xs">Actual</Badge>
+                        )}
+                        <Badge variant="outline" className={`
+                          ${ficha.prioridad === 'C1' ? 'border-red-500 text-red-400' :
+                            ficha.prioridad === 'C2' ? 'border-orange-500 text-orange-400' :
+                            ficha.prioridad === 'C3' ? 'border-yellow-500 text-yellow-400' :
+                            ficha.prioridad === 'C4' ? 'border-green-500 text-green-400' :
+                            'border-blue-500 text-blue-400'}
+                        `}>
+                          {ficha.prioridad}
+                        </Badge>
+                        <Badge variant="outline" className="border-slate-600 text-slate-400">
+                          {ficha.estado?.replace(/_/g, ' ').toUpperCase()}
+                        </Badge>
+                      </div>
+                      <span className="text-sm text-slate-400">
+                        {new Date(ficha.fecha_registro).toLocaleDateString('es-CL', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                    
+                    <p className="text-white font-medium mb-2">
+                      {ficha.motivo_consulta}
+                    </p>
+                    
+                    {ficha.diagnostico && (
+                      <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                        <p className="text-sm text-emerald-400 font-medium mb-1">Diagnóstico:</p>
+                        <p className="text-sm text-slate-300">{ficha.diagnostico.descripcion}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          CIE-10: {ficha.diagnostico.diagnostico_cie10} | 
+                          Alta: {ficha.diagnostico.tipo_alta?.replace(/_/g, ' ')}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {ficha.signos_vitales?.length > 0 && (
+                      <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                        {ficha.signos_vitales[ficha.signos_vitales.length - 1]?.presion_sistolica && (
+                          <div className="p-2 bg-slate-800 rounded text-center">
+                            <span className="text-slate-400">PA</span>
+                            <p className="text-white font-medium">
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].presion_sistolica}/
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].presion_diastolica}
+                            </p>
+                          </div>
+                        )}
+                        {ficha.signos_vitales[ficha.signos_vitales.length - 1]?.frecuencia_cardiaca && (
+                          <div className="p-2 bg-slate-800 rounded text-center">
+                            <span className="text-slate-400">FC</span>
+                            <p className="text-white font-medium">
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].frecuencia_cardiaca}
+                            </p>
+                          </div>
+                        )}
+                        {ficha.signos_vitales[ficha.signos_vitales.length - 1]?.saturacion_o2 && (
+                          <div className="p-2 bg-slate-800 rounded text-center">
+                            <span className="text-slate-400">SpO2</span>
+                            <p className="text-white font-medium">
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].saturacion_o2}%
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">
+                <History className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No hay registros anteriores para este paciente</p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end">
+            <Button variant="outline" onClick={() => setModalHistorialOpen(false)} className="border-slate-600">
+              Cerrar
             </Button>
           </div>
         </DialogContent>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { getSession } from "@/lib/auth"
-import { authAPI, pacientesAPI, fichasAPI, solicitudesMedicamentosAPI } from "@/lib/api"
+import { authAPI, pacientesAPI, fichasAPI, solicitudesMedicamentosAPI, turnosAPI } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +11,10 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ChatPanel } from "@/components/chat-panel"
+import { NotificationsPanel } from "@/components/notifications-panel"
+import { ModalTurno } from "@/components/modal-turno"
+import { useTurno } from "@/hooks/use-turno"
+import { toast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import {
   Activity,
@@ -37,6 +41,7 @@ import {
   Activity as Pulse,
   Wind,
   Droplets,
+  UserCheck,
 } from "lucide-react"
 
 // Tipos
@@ -413,6 +418,12 @@ function DashboardParamedicoPage() {
   // Estado para paciente NN
   const [esPacienteNN, setEsPacienteNN] = useState(false)
 
+  // Estado para paciente existente (recurrente)
+  const [pacienteExistente, setPacienteExistente] = useState<any>(null)
+  const [buscandoPaciente, setBuscandoPaciente] = useState(false)
+  const [historialPaciente, setHistorialPaciente] = useState<any[]>([])
+  const [mostrarHistorial, setMostrarHistorial] = useState(false)
+
   // Datos del paciente
   const [pacienteData, setPacienteData] = useState({
     rut: "",
@@ -512,6 +523,62 @@ function DashboardParamedicoPage() {
 
   // Coordenadas del Hospital
   const HOSPITAL_COORDS = { lat: -34.15462129250732, lng: -70.76652799358591 }
+
+  // Función para buscar paciente por RUT
+  const buscarPacientePorRut = async (rut: string) => {
+    // Limpiar RUT de puntos y guiones para validación
+    const rutLimpio = rut.replace(/[.-]/g, '')
+    
+    // Solo buscar si el RUT tiene al menos 7 caracteres
+    if (rutLimpio.length < 7) {
+      setPacienteExistente(null)
+      setHistorialPaciente([])
+      return
+    }
+
+    try {
+      setBuscandoPaciente(true)
+      const response = await pacientesAPI.buscar(rut)
+      
+      if (response && response.length > 0) {
+        const paciente = response[0]
+        setPacienteExistente(paciente)
+        
+        // Cargar historial de fichas del paciente
+        try {
+          const historial = await fichasAPI.listar({ paciente_id: paciente.id })
+          const fichasHistorial = Array.isArray(historial) ? historial : (historial.results || [])
+          setHistorialPaciente(fichasHistorial)
+        } catch (e) {
+          setHistorialPaciente([])
+        }
+        
+        // Auto-llenar datos del paciente
+        setPacienteData(prev => ({
+          ...prev,
+          nombres: paciente.nombres || '',
+          apellidos: paciente.apellidos || '',
+          sexo: paciente.sexo || '',
+          fecha_nacimiento: paciente.fecha_nacimiento || '',
+          telefono: paciente.telefono || '',
+        }))
+        
+        toast({
+          title: "Paciente encontrado",
+          description: `${paciente.nombres} ${paciente.apellidos} ya está registrado. Datos cargados automáticamente.`,
+        })
+      } else {
+        setPacienteExistente(null)
+        setHistorialPaciente([])
+      }
+    } catch (error) {
+      console.error('Error buscando paciente:', error)
+      setPacienteExistente(null)
+      setHistorialPaciente([])
+    } finally {
+      setBuscandoPaciente(false)
+    }
+  }
 
   // Verificar completitud de secciones
   const isIdentificacionCompleta = () => {
@@ -628,10 +695,18 @@ function DashboardParamedicoPage() {
     }
   }, [user])
 
+  // Hook de control de turno
+  const { 
+    turnoInfo, 
+    mostrarModal: mostrarModalTurno, 
+    enTurno, 
+    cerrarModal: cerrarModalTurno 
+  } = useTurno('paramedico')
+
   useEffect(() => {
     const currentUser = getSession()
     if (!currentUser || currentUser.rol !== "paramedico") {
-      navigate("/")
+      navigate("/", { replace: true })
       return
     }
     setUser(currentUser)
@@ -768,6 +843,9 @@ function DashboardParamedicoPage() {
     setModo("formulario")
     setFichaEnviada(null)
     setEsPacienteNN(false)
+    setPacienteExistente(null)
+    setHistorialPaciente([])
+    setMostrarHistorial(false)
     setPacienteData({ rut: "", nombres: "", apellidos: "", sexo: "", fecha_nacimiento: "", telefono: "", edad_aproximada: "", caracteristicas: "" })
     setSignosData({
       presion_sistolica: "",
@@ -799,7 +877,7 @@ function DashboardParamedicoPage() {
       await authAPI.logout()
     } catch {}
     localStorage.removeItem("medical_system_user")
-    navigate("/")
+    navigate("/", { replace: true })
   }
 
   if (!user) return null
@@ -817,6 +895,26 @@ function DashboardParamedicoPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* Modal de verificación de turno */}
+      <ModalTurno
+        open={mostrarModalTurno}
+        turnoInfo={turnoInfo}
+        onTurnoIniciado={cerrarModalTurno}
+        onSalir={() => {
+          cerrarModalTurno()
+          navigate('/')
+        }}
+      />
+
+      {/* Indicador de turno */}
+      {enTurno && turnoInfo?.turno_actual && (
+        <div className="fixed bottom-4 left-4 z-40 bg-emerald-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 shadow-lg">
+          <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          En turno: {turnoInfo.turno_actual.tipo_turno_display}
+          {turnoInfo.turno_actual.es_voluntario && ' (Voluntario)'}
+        </div>
+      )}
+
       {/* Header Minimalista */}
       <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md">
         <div className="container mx-auto px-4 py-3">
@@ -842,6 +940,21 @@ function DashboardParamedicoPage() {
                   </div>
                 </div>
               )}
+
+              {/* Panel de Notificaciones */}
+              <NotificationsPanel 
+                onNavigateToFicha={(fichaId) => {
+                  const ficha = fichasActivas.find(f => f.id === fichaId)
+                  if (ficha) {
+                    toggleFichaExpandida(fichaId)
+                    toast({ title: `Navegando a ficha #${fichaId}` })
+                  }
+                }}
+                onOpenChat={(fichaId) => {
+                  // Abrir chat de la ficha
+                  setFichaChatAbierto(fichaId)
+                }}
+              />
 
               <Button variant="ghost" size="icon" onClick={handleLogout} className="text-slate-400 hover:text-white">
                 <LogOut className="w-5 h-5" />
@@ -1329,12 +1442,59 @@ function DashboardParamedicoPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-slate-300">RUT *</Label>
-                      <Input
-                        placeholder="12.345.678-9"
-                        className="bg-slate-800 border-slate-700 text-white"
-                        value={pacienteData.rut}
-                        onChange={(e) => setPacienteData({ ...pacienteData, rut: e.target.value })}
-                      />
+                      <div className="relative">
+                        <Input
+                          placeholder="12.345.678-9"
+                          className="bg-slate-800 border-slate-700 text-white pr-10"
+                          value={pacienteData.rut}
+                          onChange={(e) => {
+                            setPacienteData({ ...pacienteData, rut: e.target.value })
+                            // Buscar paciente al escribir el RUT
+                            buscarPacientePorRut(e.target.value)
+                          }}
+                        />
+                        {buscandoPaciente && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <div className="animate-spin h-4 w-4 border-2 border-emerald-500 border-t-transparent rounded-full"></div>
+                          </div>
+                        )}
+                      </div>
+                      {pacienteExistente && (
+                        <div className="mt-2 p-3 bg-emerald-900/30 border border-emerald-600 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <UserCheck className="w-4 h-4 text-emerald-400" />
+                              <span className="text-sm text-emerald-300 font-medium">
+                                Paciente registrado
+                              </span>
+                            </div>
+                            {historialPaciente.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setMostrarHistorial(!mostrarHistorial)}
+                                className="text-emerald-400 hover:text-emerald-300 p-1 h-auto"
+                              >
+                                <History className="w-4 h-4 mr-1" />
+                                {historialPaciente.length} visitas
+                              </Button>
+                            )}
+                          </div>
+                          {mostrarHistorial && historialPaciente.length > 0 && (
+                            <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
+                              {historialPaciente.slice(0, 5).map((ficha: any) => (
+                                <div key={ficha.id} className="p-2 bg-slate-800/50 rounded text-xs">
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-300">{new Date(ficha.fecha_llegada).toLocaleDateString('es-CL')}</span>
+                                    <Badge variant="outline" className="text-xs">{ficha.prioridad}</Badge>
+                                  </div>
+                                  <p className="text-slate-400 mt-1 truncate">{ficha.motivo_consulta}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label className="text-slate-300">Sexo *</Label>

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import (Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, 
                      Anamnesis, Triage, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama,
-                     ArchivoAdjunto, MensajeChat, Notificacion)
+                     ArchivoAdjunto, MensajeChat, Notificacion, NotaEvolucion, Turno, ConfiguracionTurno)
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -241,7 +241,7 @@ class SignosVitalesCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'timestamp', 'escala_glasgow']
     
     def create(self, validated_data):
-        # Establecer valores por defecto para campos no proporcionados
+        # Establecer valores por defecto para campos no proporcionados o nulos
         defaults = {
             'presion_sistolica': 120,
             'presion_diastolica': 80,
@@ -249,6 +249,9 @@ class SignosVitalesCreateSerializer(serializers.ModelSerializer):
             'frecuencia_respiratoria': 16,
             'saturacion_o2': 98,
             'temperatura': 36.5,
+            'glasgow_ocular': 4,
+            'glasgow_verbal': 5,
+            'glasgow_motor': 6,
         }
         
         for field, default_value in defaults.items():
@@ -446,6 +449,7 @@ class ArchivoAdjuntoSerializer(serializers.ModelSerializer):
     """Serializer para archivos adjuntos"""
     subido_por_nombre = serializers.CharField(source='subido_por.get_full_name', read_only=True)
     subido_por_rol = serializers.CharField(source='subido_por.rol', read_only=True)
+    archivo = serializers.SerializerMethodField()
     url = serializers.SerializerMethodField()
     extension = serializers.SerializerMethodField()
     
@@ -456,11 +460,18 @@ class ArchivoAdjuntoSerializer(serializers.ModelSerializer):
                   'extension', 'descripcion', 'fecha_subida']
         read_only_fields = ['id', 'fecha_subida', 'subido_por', 'tipo', 'tamano', 'mime_type']
     
-    def get_url(self, obj):
+    def get_archivo(self, obj):
+        """Devolver URL absoluta del archivo"""
         request = self.context.get('request')
-        if obj.archivo and request:
-            return request.build_absolute_uri(obj.archivo.url)
-        return obj.archivo.url if obj.archivo else None
+        if obj.archivo:
+            if request:
+                return request.build_absolute_uri(obj.archivo.url)
+            # Si no hay request, construir URL con localhost
+            return f"http://localhost:8000{obj.archivo.url}"
+        return None
+    
+    def get_url(self, obj):
+        return self.get_archivo(obj)
     
     def get_extension(self, obj):
         return obj.get_extension()
@@ -479,20 +490,42 @@ class ArchivoAdjuntoUploadSerializer(serializers.ModelSerializer):
         }
     
     def validate_archivo(self, value):
-        # Validar tamaño (50MB máximo)
-        max_size = 50 * 1024 * 1024  # 50MB
+        import os
+        import mimetypes
+        from django.conf import settings
+        
+        ext = os.path.splitext(value.name)[1].lower()
+        
+        # Si no hay extensión, intentar obtenerla del content_type
+        if not ext or ext == '.':
+            content_type = getattr(value, 'content_type', '')
+            if content_type:
+                # Limpiar codecs si existen (ej: audio/webm; codecs=opus)
+                clean_type = content_type.split(';')[0].strip()
+                guessed_ext = mimetypes.guess_extension(clean_type)
+                if guessed_ext:
+                    ext = guessed_ext
+                    # Corregir el nombre del archivo
+                    base_name = os.path.splitext(value.name)[0] or 'archivo'
+                    value.name = f"{base_name}{ext}"
+        
+        # Determinar tamaño máximo según tipo
+        video_extensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v', '.3gp', '.wmv']
+        if ext in video_extensions:
+            max_size = 100 * 1024 * 1024  # 100MB para videos
+        else:
+            max_size = 50 * 1024 * 1024  # 50MB para otros
+        
         if value.size > max_size:
-            raise serializers.ValidationError(f'El archivo es demasiado grande. Tamaño máximo: 50MB')
+            raise serializers.ValidationError(f'El archivo es demasiado grande. Tamaño máximo: {max_size // (1024*1024)}MB')
         
         # Validar extensión
-        import os
-        from django.conf import settings
-        ext = os.path.splitext(value.name)[1].lower()
         allowed_extensions = getattr(settings, 'ALLOWED_UPLOAD_EXTENSIONS', 
-            ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.doc', '.docx', '.xls', '.xlsx'])
+            ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+             '.mp4', '.webm', '.mov', '.mp3', '.wav', '.ogg', '.m4a'])
         
         if ext not in allowed_extensions:
-            raise serializers.ValidationError(f'Tipo de archivo no permitido. Extensiones permitidas: {", ".join(allowed_extensions)}')
+            raise serializers.ValidationError(f'Tipo de archivo no permitido: {ext}. Extensiones permitidas: {", ".join(allowed_extensions)}')
         
         return value
     
@@ -510,8 +543,13 @@ class ArchivoAdjuntoUploadSerializer(serializers.ModelSerializer):
         # Remover ficha_id si existe (ya tenemos ficha)
         validated_data.pop('ficha_id', None)
         
+        # Limpiar mime_type de codecs (ej: audio/webm; codecs=opus -> audio/webm)
+        mime_type = archivo.content_type
+        if mime_type and ';' in mime_type:
+            mime_type = mime_type.split(';')[0].strip()
+        
         # Determinar tipo de archivo
-        tipo = ArchivoAdjunto.get_tipo_from_mime(archivo.content_type, archivo.name)
+        tipo = ArchivoAdjunto.get_tipo_from_mime(mime_type, archivo.name)
         
         adjunto = ArchivoAdjunto.objects.create(
             ficha=validated_data['ficha'],
@@ -520,7 +558,7 @@ class ArchivoAdjuntoUploadSerializer(serializers.ModelSerializer):
             nombre_original=archivo.name,
             tipo=tipo,
             tamano=archivo.size,
-            mime_type=archivo.content_type,
+            mime_type=mime_type,
             descripcion=validated_data.get('descripcion', '')
         )
         return adjunto
@@ -605,6 +643,87 @@ class MensajeChatCreateSerializer(serializers.ModelSerializer):
         return mensaje
 
 
+class NotaEvolucionSerializer(serializers.ModelSerializer):
+    """Serializer para notas de evolución clínica"""
+    medico = serializers.SerializerMethodField()
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    
+    class Meta:
+        model = NotaEvolucion
+        fields = [
+            'id', 'ficha', 'medico', 'tipo', 'tipo_display', 'fecha_hora',
+            'subjetivo', 'objetivo', 'analisis', 'plan',
+            'signos_vitales', 'glasgow',
+            'indicaciones_actualizadas', 'medicamentos_actualizados',
+            'editado', 'fecha_edicion', 'motivo_edicion'
+        ]
+        read_only_fields = ['id', 'fecha_hora', 'editado', 'fecha_edicion']
+    
+    def get_medico(self, obj):
+        if obj.medico:
+            return {
+                'id': obj.medico.id,
+                'nombre': obj.medico.get_full_name() or obj.medico.username,
+                'rol': obj.medico.rol
+            }
+        return None
+
+
+class NotaEvolucionCreateSerializer(serializers.ModelSerializer):
+    """Serializer para crear/actualizar notas de evolución"""
+    ficha_id = serializers.IntegerField(write_only=True, required=False)
+    
+    class Meta:
+        model = NotaEvolucion
+        fields = [
+            'ficha', 'ficha_id', 'tipo',
+            'subjetivo', 'objetivo', 'analisis', 'plan',
+            'signos_vitales', 'glasgow',
+            'indicaciones_actualizadas', 'medicamentos_actualizados',
+            'motivo_edicion'
+        ]
+        extra_kwargs = {
+            'ficha': {'required': False}
+        }
+    
+    def validate(self, data):
+        # Permitir ficha_id como alternativa a ficha
+        if 'ficha_id' in data and 'ficha' not in data:
+            try:
+                data['ficha'] = FichaEmergencia.objects.get(id=data['ficha_id'])
+            except FichaEmergencia.DoesNotExist:
+                raise serializers.ValidationError({'ficha_id': 'Ficha no encontrada'})
+        
+        # Validar que al menos hay algo de contenido
+        tiene_contenido = any([
+            data.get('subjetivo'),
+            data.get('objetivo'),
+            data.get('analisis'),
+            data.get('plan'),
+            data.get('indicaciones_actualizadas'),
+            data.get('medicamentos_actualizados')
+        ])
+        
+        if not tiene_contenido:
+            raise serializers.ValidationError(
+                'Debe proporcionar al menos un campo de contenido (subjetivo, objetivo, análisis, plan, indicaciones o medicamentos)'
+            )
+        
+        return data
+    
+    def create(self, validated_data):
+        validated_data.pop('ficha_id', None)
+        validated_data['medico'] = self.context['request'].user
+        return NotaEvolucion.objects.create(**validated_data)
+    
+    def update(self, instance, validated_data):
+        validated_data.pop('ficha_id', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
+
 class NotificacionSerializer(serializers.ModelSerializer):
     """Serializer para notificaciones"""
     tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
@@ -635,3 +754,85 @@ class NotificacionSerializer(serializers.ModelSerializer):
             return f"hace {minutes} minuto{'s' if minutes > 1 else ''}"
         
         return "hace un momento"
+
+
+class ConfiguracionTurnoSerializer(serializers.ModelSerializer):
+    """Serializer para configuración de turnos"""
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    
+    class Meta:
+        model = ConfiguracionTurno
+        fields = ['id', 'tipo', 'tipo_display', 'hora_inicio', 'hora_fin', 'descripcion', 'activo']
+
+
+class TurnoSerializer(serializers.ModelSerializer):
+    """Serializer para turnos"""
+    usuario_nombre = serializers.CharField(source='usuario.get_full_name', read_only=True)
+    usuario_rol = serializers.CharField(source='usuario.rol', read_only=True)
+    usuario_rol_display = serializers.CharField(source='usuario.get_rol_display', read_only=True)
+    tipo_turno_display = serializers.CharField(source='get_tipo_turno_display', read_only=True)
+    esta_en_horario = serializers.SerializerMethodField()
+    horario = serializers.SerializerMethodField()
+    creado_por_nombre = serializers.CharField(source='creado_por.get_full_name', read_only=True)
+    
+    class Meta:
+        model = Turno
+        fields = ['id', 'usuario', 'usuario_nombre', 'usuario_rol', 'usuario_rol_display',
+                  'fecha', 'tipo_turno', 'tipo_turno_display', 'en_turno', 'hora_entrada', 
+                  'hora_salida', 'es_voluntario', 'horario', 'esta_en_horario',
+                  'creado_por', 'creado_por_nombre', 'fecha_creacion', 'fecha_modificacion', 'notas']
+        read_only_fields = ['id', 'hora_entrada', 'hora_salida', 'fecha_creacion', 'fecha_modificacion']
+    
+    def get_esta_en_horario(self, obj):
+        return obj.esta_en_horario()
+    
+    def get_horario(self, obj):
+        if obj.tipo_turno == 'DESCANSO':
+            return None
+        horario = obj.get_horario()
+        return {
+            'inicio': horario['inicio'].strftime('%H:%M'),
+            'fin': horario['fin'].strftime('%H:%M')
+        }
+    
+    def create(self, validated_data):
+        validated_data['creado_por'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class TurnoAsignacionMasivaSerializer(serializers.Serializer):
+    """Serializer para asignación masiva de turnos"""
+    usuario_id = serializers.IntegerField()
+    turnos = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="Lista de turnos: [{'fecha': '2025-01-01', 'tipo_turno': 'AM'}, ...]"
+    )
+    
+    def validate_usuario_id(self, value):
+        try:
+            Usuario.objects.get(id=value, is_active=True)
+        except Usuario.DoesNotExist:
+            raise serializers.ValidationError("Usuario no encontrado o inactivo")
+        return value
+    
+    def validate_turnos(self, value):
+        from datetime import datetime
+        for turno in value:
+            if 'fecha' not in turno or 'tipo_turno' not in turno:
+                raise serializers.ValidationError("Cada turno debe tener 'fecha' y 'tipo_turno'")
+            try:
+                datetime.strptime(turno['fecha'], '%Y-%m-%d')
+            except ValueError:
+                raise serializers.ValidationError(f"Fecha inválida: {turno['fecha']}")
+            if turno['tipo_turno'] not in ['AM', 'PM', 'DOBLE', 'DESCANSO']:
+                raise serializers.ValidationError(f"Tipo de turno inválido: {turno['tipo_turno']}")
+        return value
+
+
+class VerificarTurnoSerializer(serializers.Serializer):
+    """Serializer para verificar estado de turno del usuario actual"""
+    tiene_turno_programado = serializers.BooleanField()
+    turno_actual = TurnoSerializer(allow_null=True)
+    en_horario = serializers.BooleanField()
+    puede_iniciar_voluntario = serializers.BooleanField()
+    mensaje = serializers.CharField()

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen
+from .models import Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, Anamnesis, Diagnostico, SolicitudExamen, Turno, ConfiguracionTurno
 
 
 @admin.register(Usuario)
@@ -63,3 +63,19 @@ class SolicitudExamenAdmin(admin.ModelAdmin):
     list_filter = ['estado', 'prioridad', 'tipo_examen', 'fecha_solicitud']
     search_fields = ['tipo_examen', 'examenes_especificos', 'justificacion']
     readonly_fields = ['fecha_solicitud', 'fecha_actualizacion']
+
+
+@admin.register(ConfiguracionTurno)
+class ConfiguracionTurnoAdmin(admin.ModelAdmin):
+    list_display = ['tipo', 'hora_inicio', 'hora_fin', 'activo']
+    list_filter = ['activo', 'tipo']
+
+
+@admin.register(Turno)
+class TurnoAdmin(admin.ModelAdmin):
+    list_display = ['usuario', 'fecha', 'tipo_turno', 'en_turno', 'es_voluntario', 'hora_entrada', 'hora_salida']
+    list_filter = ['tipo_turno', 'fecha', 'en_turno', 'es_voluntario', 'usuario__rol']
+    search_fields = ['usuario__first_name', 'usuario__last_name', 'usuario__username']
+    date_hierarchy = 'fecha'
+    raw_id_fields = ['usuario', 'creado_por']
+    readonly_fields = ['fecha_creacion', 'fecha_modificacion']

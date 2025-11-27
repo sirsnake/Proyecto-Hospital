@@ -13,7 +13,7 @@ from weasyprint import HTML
 import io
 from .models import (Usuario, Paciente, FichaEmergencia, SignosVitales, SolicitudMedicamento, 
                      Anamnesis, Triage, Diagnostico, SolicitudExamen, AuditLog, ConfiguracionHospital, Cama,
-                     ArchivoAdjunto, MensajeChat, Notificacion)
+                     ArchivoAdjunto, MensajeChat, Notificacion, NotaEvolucion, Turno, ConfiguracionTurno)
 from .serializers import (
     UsuarioSerializer, LoginSerializer, PacienteSerializer, 
     FichaEmergenciaSerializer, FichaEmergenciaCreateSerializer,
@@ -23,7 +23,8 @@ from .serializers import (
     ConfiguracionHospitalSerializer, CamaSerializer,
     ArchivoAdjuntoSerializer, ArchivoAdjuntoUploadSerializer,
     MensajeChatSerializer, MensajeChatCreateSerializer,
-    NotificacionSerializer
+    NotificacionSerializer, NotaEvolucionSerializer, NotaEvolucionCreateSerializer,
+    TurnoSerializer, ConfiguracionTurnoSerializer, TurnoAsignacionMasivaSerializer
 )
 
 
@@ -226,6 +227,7 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
         estado = self.request.query_params.get('estado', None)
         prioridad = self.request.query_params.get('prioridad', None)
         paramedico_id = self.request.query_params.get('paramedico', None)
+        paciente_id = self.request.query_params.get('paciente_id', None)
         
         if estado:
             queryset = queryset.filter(estado=estado)
@@ -233,6 +235,8 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(prioridad=prioridad)
         if paramedico_id:
             queryset = queryset.filter(paramedico_id=paramedico_id)
+        if paciente_id:
+            queryset = queryset.filter(paciente_id=paciente_id).order_by('-fecha_registro')
         
         return queryset
     
@@ -302,14 +306,19 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def atendidas(self, request):
-        """Obtener fichas atendidas (con diagnóstico pero no dados de alta)"""
-        from django.db.models import Exists, OuterRef
+        """Obtener fichas atendidas hoy (con diagnóstico realizado hoy)"""
+        from django.utils import timezone
         from .models import Diagnostico
         
-        # Filtrar fichas que tienen diagnóstico pero no están dados de alta
+        hoy = timezone.now().date()
+        
+        # Fichas con diagnóstico realizado hoy
+        fichas_ids = Diagnostico.objects.filter(
+            fecha_diagnostico__date=hoy
+        ).values_list('ficha_id', flat=True)
+        
         fichas = self.get_queryset().filter(
-            diagnostico__isnull=False,
-            estado='atendido'
+            id__in=fichas_ids
         ).order_by('-fecha_actualizacion')
         
         serializer = self.get_serializer(fichas, many=True)
@@ -373,6 +382,8 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def cambiar_estado(self, request, pk=None):
         """Cambiar el estado de una ficha"""
+        from django.utils import timezone
+        
         ficha = self.get_object()
         nuevo_estado = request.data.get('estado')
         estado_anterior = ficha.estado
@@ -385,6 +396,11 @@ class FichaEmergenciaViewSet(viewsets.ModelViewSet):
             )
         
         ficha.estado = nuevo_estado
+        
+        # Guardar fecha de llegada al hospital cuando cambia a en_hospital
+        if nuevo_estado == 'en_hospital' and estado_anterior == 'en_ruta':
+            ficha.fecha_llegada_hospital = timezone.now()
+        
         ficha.save()
         
         # Registrar cambio de estado en auditoría
@@ -502,9 +518,54 @@ class SignosVitalesViewSet(viewsets.ModelViewSet):
         
         return queryset
     
+    def _detectar_signos_criticos(self, signos):
+        """Detectar si hay signos vitales críticos y retornar lista de alertas"""
+        alertas = []
+        
+        # Frecuencia cardíaca crítica
+        if signos.frecuencia_cardiaca:
+            if signos.frecuencia_cardiaca < 50:
+                alertas.append(f"Bradicardia severa: FC {signos.frecuencia_cardiaca} lpm")
+            elif signos.frecuencia_cardiaca > 120:
+                alertas.append(f"Taquicardia: FC {signos.frecuencia_cardiaca} lpm")
+        
+        # Presión arterial crítica
+        if signos.presion_sistolica:
+            if signos.presion_sistolica < 90:
+                alertas.append(f"Hipotensión: PA {signos.presion_sistolica}/{signos.presion_diastolica} mmHg")
+            elif signos.presion_sistolica > 180:
+                alertas.append(f"Crisis hipertensiva: PA {signos.presion_sistolica}/{signos.presion_diastolica} mmHg")
+        
+        # Saturación de oxígeno crítica
+        if signos.saturacion_o2:
+            if signos.saturacion_o2 < 90:
+                alertas.append(f"Hipoxemia severa: SatO2 {signos.saturacion_o2}%")
+        
+        # Temperatura crítica
+        if signos.temperatura:
+            if signos.temperatura < 35:
+                alertas.append(f"Hipotermia: {signos.temperatura}°C")
+            elif signos.temperatura > 39.5:
+                alertas.append(f"Fiebre alta: {signos.temperatura}°C")
+        
+        # Frecuencia respiratoria crítica
+        if signos.frecuencia_respiratoria:
+            if signos.frecuencia_respiratoria < 10:
+                alertas.append(f"Bradipnea: FR {signos.frecuencia_respiratoria} rpm")
+            elif signos.frecuencia_respiratoria > 30:
+                alertas.append(f"Taquipnea severa: FR {signos.frecuencia_respiratoria} rpm")
+        
+        # Glasgow crítico
+        if signos.escala_glasgow and signos.escala_glasgow <= 8:
+            alertas.append(f"Glasgow crítico: {signos.escala_glasgow}/15")
+        
+        return alertas
+    
     def perform_create(self, serializer):
-        """Registrar signos vitales en auditoría"""
+        """Registrar signos vitales en auditoría y notificar si hay críticos"""
         signos = serializer.save()
+        
+        # Auditoría
         AuditLog.objects.create(
             usuario=self.request.user,
             accion='crear',
@@ -516,10 +577,41 @@ class SignosVitalesViewSet(viewsets.ModelViewSet):
                 'fc': signos.frecuencia_cardiaca,
                 'pa': f"{signos.presion_sistolica}/{signos.presion_diastolica}",
                 'temp': str(signos.temperatura) if signos.temperatura else None,
-                'sat': signos.saturacion_oxigeno
+                'sat': signos.saturacion_o2
             },
             ip_address=get_client_ip(self.request)
         )
+        
+        # Detectar signos críticos
+        alertas = self._detectar_signos_criticos(signos)
+        
+        if alertas:
+            # Notificar al médico asignado
+            ficha = signos.ficha
+            paciente_nombre = str(ficha.paciente) if ficha.paciente else f"NN-{ficha.id}"
+            
+            mensaje_alertas = "\n".join([f"⚠️ {a}" for a in alertas])
+            
+            # Si hay médico asignado, notificar solo a él
+            if ficha.medico_asignado:
+                Notificacion.crear_notificacion(
+                    usuario=ficha.medico_asignado,
+                    tipo='signos_criticos',
+                    titulo=f'🚨 Signos Vitales Críticos',
+                    mensaje=f'Paciente: {paciente_nombre}\n{mensaje_alertas}',
+                    ficha=ficha,
+                    prioridad='urgente'
+                )
+            else:
+                # Si no hay médico asignado, notificar a todos los médicos
+                Notificacion.notificar_rol(
+                    rol='medico',
+                    tipo='signos_criticos',
+                    titulo=f'🚨 Signos Vitales Críticos',
+                    mensaje=f'Paciente: {paciente_nombre}\n{mensaje_alertas}',
+                    ficha=ficha,
+                    prioridad='urgente'
+                )
 
 
 class SolicitudMedicamentoViewSet(viewsets.ModelViewSet):
@@ -845,7 +937,8 @@ class DiagnosticoViewSet(viewsets.ModelViewSet):
             detalles={
                 'ficha_id': diagnostico.ficha.id,
                 'paciente': str(diagnostico.ficha.paciente),
-                'diagnostico_principal': diagnostico.diagnostico_principal[:100] if diagnostico.diagnostico_principal else None,
+                'diagnostico_cie10': diagnostico.diagnostico_cie10,
+                'descripcion': diagnostico.descripcion[:100] if diagnostico.descripcion else None,
                 'tipo_alta': tipo_alta
             },
             ip_address=get_client_ip(request)
@@ -1410,23 +1503,56 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        hoy = timezone.now().date()
+        
         total_usuarios = Usuario.objects.filter(is_active=True).count()
         usuarios_por_rol = {}
         for rol_code, rol_nombre in Usuario.ROL_CHOICES:
             usuarios_por_rol[rol_code] = Usuario.objects.filter(rol=rol_code, is_active=True).count()
         
+        # Personal con turno asignado hoy (excluyendo descansos)
+        turnos_hoy = Turno.objects.filter(fecha=hoy).exclude(tipo_turno='DESCANSO')
+        personal_en_turno = turnos_hoy.count()
+        
+        # Personal en turno por rol
+        personal_turno_por_rol = {}
+        for turno in turnos_hoy.select_related('usuario'):
+            rol = turno.usuario.rol
+            if rol not in personal_turno_por_rol:
+                personal_turno_por_rol[rol] = 0
+            personal_turno_por_rol[rol] += 1
+        
+        # Estadísticas de fichas
+        fichas_en_ruta = FichaEmergencia.objects.filter(estado='en_ruta').count()
+        fichas_en_hospital = FichaEmergencia.objects.filter(estado='en_hospital').count()
+        
         return Response({
             'total_usuarios': total_usuarios,
             'usuarios_por_rol': usuarios_por_rol,
             'usuarios_activos_hoy': Usuario.objects.filter(
-                last_login__date=timezone.now().date()
-            ).count()
+                last_login__date=hoy
+            ).count(),
+            'personal_en_turno': personal_en_turno,
+            'personal_turno_por_rol': personal_turno_por_rol,
+            'fichas_en_ruta': fichas_en_ruta,
+            'fichas_en_hospital': fichas_en_hospital
         })
     
     @action(detail=False, methods=['get'])
     def medicos(self, request):
         """Obtener lista de médicos activos para asignación"""
+        solo_en_turno = request.query_params.get('en_turno', 'false').lower() == 'true'
+        
         medicos = Usuario.objects.filter(rol='medico', is_active=True).order_by('first_name', 'last_name')
+        
+        # Si se pide solo médicos en turno, filtrar
+        if solo_en_turno:
+            hoy = timezone.now().date()
+            turnos_hoy = Turno.objects.filter(
+                fecha=hoy,
+                usuario__rol='medico'
+            ).exclude(tipo_turno='DESCANSO').values_list('usuario_id', flat=True)
+            medicos = medicos.filter(id__in=turnos_hoy)
         
         # Agregar conteo de pacientes asignados a cada médico
         from django.db.models import Count
@@ -1436,11 +1562,20 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         
         data = []
         for medico in medicos_con_pacientes:
+            # Verificar si está en turno hoy
+            hoy = timezone.now().date()
+            turno_hoy = Turno.objects.filter(
+                usuario=medico,
+                fecha=hoy
+            ).exclude(tipo_turno='DESCANSO').first()
+            
             data.append({
                 'id': medico.id,
                 'nombre': medico.get_full_name(),
                 'especialidad': medico.especialidad or 'General',
-                'pacientes_asignados': medico.pacientes_asignados
+                'pacientes_asignados': medico.pacientes_asignados,
+                'en_turno': turno_hoy is not None,
+                'tipo_turno': turno_hoy.tipo_turno if turno_hoy else None
             })
         
         return Response(data)
@@ -1467,7 +1602,11 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         fecha_hasta = self.request.query_params.get('fecha_hasta', None)
         
         if usuario_id:
-            queryset = queryset.filter(usuario_id=usuario_id)
+            # Buscar por nombre de usuario (parcial) o por ID
+            if usuario_id.isdigit():
+                queryset = queryset.filter(usuario_id=usuario_id)
+            else:
+                queryset = queryset.filter(usuario_nombre__icontains=usuario_id)
         if accion:
             queryset = queryset.filter(accion=accion)
         if modelo:
@@ -1786,6 +1925,155 @@ class CamaViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(cama)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def tipos(self, request):
+        """Obtener tipos de camas disponibles"""
+        tipos = [{'value': tipo, 'label': label} for tipo, label in Cama.TIPO_CHOICES]
+        return Response(tipos)
+    
+    @action(detail=False, methods=['get'])
+    def tipos_disponibles(self, request):
+        """Obtener resumen de camas por tipo"""
+        resultado = []
+        for tipo, label in Cama.TIPO_CHOICES:
+            camas = Cama.objects.filter(tipo=tipo)
+            total = camas.count()
+            disponibles = camas.filter(estado='disponible').count()
+            ocupadas = camas.filter(estado='ocupada').count()
+            if total > 0:
+                resultado.append({
+                    'tipo': tipo,
+                    'label': label,
+                    'total': total,
+                    'disponibles': disponibles,
+                    'ocupadas': ocupadas,
+                })
+        return Response(resultado)
+    
+    @action(detail=False, methods=['post'])
+    def eliminar_tipo(self, request):
+        """Eliminar todas las camas de un tipo"""
+        if request.user.rol != 'administrador':
+            return Response({'error': 'Solo administradores pueden eliminar camas'}, status=status.HTTP_403_FORBIDDEN)
+        
+        tipo = request.data.get('tipo')
+        tipos_validos = [t[0] for t in Cama.TIPO_CHOICES]
+        if tipo not in tipos_validos:
+            return Response({'error': f'Tipo inválido. Debe ser uno de: {tipos_validos}'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        camas = Cama.objects.filter(tipo=tipo)
+        ocupadas = camas.filter(estado='ocupada').count()
+        
+        if ocupadas > 0:
+            return Response({'error': f'No se pueden eliminar: hay {ocupadas} camas ocupadas de tipo {tipo}'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        total = camas.count()
+        camas.delete()
+        
+        # Auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='eliminar',
+            modelo='Cama',
+            detalles={'accion': 'eliminar_tipo', 'tipo': tipo, 'cantidad': total},
+        )
+        
+        return Response({'mensaje': f'Se eliminaron {total} camas de tipo {tipo}', 'eliminadas': total})
+    
+    @action(detail=False, methods=['post'])
+    def crear_multiple(self, request):
+        """Crear múltiples camas de un tipo"""
+        if request.user.rol != 'administrador':
+            return Response({'error': 'Solo administradores pueden crear camas'}, status=status.HTTP_403_FORBIDDEN)
+        
+        tipo = request.data.get('tipo')
+        cantidad = request.data.get('cantidad', 1)
+        
+        tipos_validos = [t[0] for t in Cama.TIPO_CHOICES]
+        if tipo not in tipos_validos:
+            return Response({'error': f'Tipo inválido. Debe ser uno de: {tipos_validos}'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            cantidad = int(cantidad)
+            if cantidad < 1 or cantidad > 50:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return Response({'error': 'La cantidad debe ser un número entre 1 y 50'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Obtener el último número de camas de ese tipo
+        prefijo = tipo.upper().replace('_', '-')
+        if tipo == 'cama_general':
+            prefijo = 'CAM'
+        elif tipo == 'box':
+            prefijo = 'BOX'
+        elif tipo == 'uci':
+            prefijo = 'UCI'
+        elif tipo == 'uti':
+            prefijo = 'UTI'
+        
+        camas_existentes = Cama.objects.filter(tipo=tipo).count()
+        
+        camas_creadas = []
+        for i in range(1, cantidad + 1):
+            numero = f"{prefijo}-{(camas_existentes + i):02d}"
+            # Verificar que no exista
+            if Cama.objects.filter(numero=numero).exists():
+                # Buscar el siguiente disponible
+                j = camas_existentes + i
+                while Cama.objects.filter(numero=f"{prefijo}-{j:02d}").exists():
+                    j += 1
+                numero = f"{prefijo}-{j:02d}"
+            
+            cama = Cama.objects.create(numero=numero, tipo=tipo, estado='disponible')
+            camas_creadas.append(cama)
+        
+        # Auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='crear',
+            modelo='Cama',
+            objeto_id=0,
+            detalles={'accion': 'crear_multiple', 'tipo': tipo, 'cantidad': cantidad},
+            ip_address=get_client_ip(request)
+        )
+        
+        serializer = self.get_serializer(camas_creadas, many=True)
+        return Response({
+            'mensaje': f'Se crearon {cantidad} camas de tipo {tipo}',
+            'camas': serializer.data
+        })
+    
+    @action(detail=False, methods=['post'])
+    def eliminar_multiple(self, request):
+        """Eliminar múltiples camas (solo las que estén disponibles)"""
+        if request.user.rol != 'administrador':
+            return Response({'error': 'Solo administradores pueden eliminar camas'}, status=status.HTTP_403_FORBIDDEN)
+        
+        ids = request.data.get('ids', [])
+        
+        if not ids:
+            return Response({'error': 'Debe proporcionar lista de IDs'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        camas = Cama.objects.filter(id__in=ids, estado='disponible')
+        count = camas.count()
+        
+        if count == 0:
+            return Response({'error': 'No se encontraron camas disponibles para eliminar'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='eliminar',
+            modelo='Cama',
+            objeto_id=0,
+            detalles={'accion': 'eliminar_multiple', 'ids': ids, 'eliminadas': count},
+            ip_address=get_client_ip(request)
+        )
+        
+        camas.delete()
+        
+        return Response({'mensaje': f'Se eliminaron {count} camas'})
 
 
 class ArchivoAdjuntoViewSet(viewsets.ModelViewSet):
@@ -1842,6 +2130,12 @@ class ArchivoAdjuntoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload(self, request):
         """Subir un nuevo archivo adjunto"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"Upload request data: {request.data}")
+        logger.info(f"Upload request FILES: {request.FILES}")
+        
         serializer = ArchivoAdjuntoUploadSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             archivo = serializer.save()
@@ -1861,7 +2155,9 @@ class ArchivoAdjuntoViewSet(viewsets.ModelViewSet):
                 ip_address=get_client_ip(request)
             )
             
-            return Response(ArchivoAdjuntoSerializer(archivo).data, status=status.HTTP_201_CREATED)
+            return Response(ArchivoAdjuntoSerializer(archivo, context={'request': request}).data, status=status.HTTP_201_CREATED)
+        
+        logger.error(f"Upload validation errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get'])
@@ -2011,6 +2307,109 @@ class MensajeChatViewSet(viewsets.ModelViewSet):
         return Response({'status': 'ok', 'marcados': len(mensaje_ids)})
 
 
+class NotaEvolucionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestión de Notas de Evolución Clínica.
+    
+    Las notas de evolución permiten documentar el progreso del paciente
+    durante su hospitalización sin modificar el diagnóstico original.
+    """
+    queryset = NotaEvolucion.objects.all()
+    serializer_class = NotaEvolucionSerializer
+    
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return NotaEvolucionCreateSerializer
+        return NotaEvolucionSerializer
+    
+    def get_queryset(self):
+        queryset = NotaEvolucion.objects.all()
+        ficha_id = self.request.query_params.get('ficha')
+        if ficha_id:
+            queryset = queryset.filter(ficha_id=ficha_id)
+        return queryset.order_by('-fecha_hora')
+    
+    def create(self, request, *args, **kwargs):
+        """Crear una nueva nota de evolución"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        nota = serializer.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='crear',
+            modelo='NotaEvolucion',
+            objeto_id=nota.id,
+            detalles={
+                'ficha_id': nota.ficha_id,
+                'tipo': nota.tipo,
+                'paciente': f"{nota.ficha.paciente.nombres} {nota.ficha.paciente.apellidos}" if not nota.ficha.paciente.es_nn else f"NN ({nota.ficha.paciente.id_temporal})",
+            },
+            ip_address=get_client_ip(request)
+        )
+        
+        read_serializer = NotaEvolucionSerializer(nota, context={'request': request})
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+    
+    def update(self, request, *args, **kwargs):
+        """Actualizar una nota de evolución (requiere motivo de edición)"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        nota = serializer.save()
+        
+        # Registrar en auditoría
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='actualizar',
+            modelo='NotaEvolucion',
+            objeto_id=nota.id,
+            detalles={
+                'ficha_id': nota.ficha_id,
+                'tipo': nota.tipo,
+                'motivo_edicion': nota.motivo_edicion,
+            },
+            ip_address=get_client_ip(request)
+        )
+        
+        read_serializer = NotaEvolucionSerializer(nota, context={'request': request})
+        return Response(read_serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def por_ficha(self, request):
+        """Obtener todas las notas de evolución de una ficha"""
+        ficha_id = request.query_params.get('ficha_id')
+        if not ficha_id:
+            return Response({'error': 'Debe proporcionar ficha_id'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        notas = NotaEvolucion.objects.filter(ficha_id=ficha_id).order_by('-fecha_hora')
+        serializer = self.get_serializer(notas, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def resumen(self, request):
+        """Obtener un resumen de la evolución del paciente"""
+        ficha_id = request.query_params.get('ficha_id')
+        if not ficha_id:
+            return Response({'error': 'Debe proporcionar ficha_id'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        notas = NotaEvolucion.objects.filter(ficha_id=ficha_id).order_by('-fecha_hora')
+        
+        resumen = {
+            'total_notas': notas.count(),
+            'ultima_nota': NotaEvolucionSerializer(notas.first()).data if notas.exists() else None,
+            'notas_por_tipo': {},
+        }
+        
+        # Contar por tipo
+        for tipo, _ in NotaEvolucion.TIPO_CHOICES:
+            resumen['notas_por_tipo'][tipo] = notas.filter(tipo=tipo).count()
+        
+        return Response(resumen)
+
+
 class NotificacionViewSet(viewsets.ModelViewSet):
     """ViewSet para gestión de notificaciones"""
     serializer_class = NotificacionSerializer
@@ -2139,3 +2538,355 @@ def poll_updates(request):
             'notificaciones_no_leidas': 0,
             'error': str(e)
         })
+
+
+# ============================================================================
+# TURNOS
+# ============================================================================
+
+class ConfiguracionTurnoViewSet(viewsets.ModelViewSet):
+    """ViewSet para configuración de horarios de turnos"""
+    queryset = ConfiguracionTurno.objects.all()
+    serializer_class = ConfiguracionTurnoSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return ConfiguracionTurno.objects.filter(activo=True)
+    
+    @action(detail=False, methods=['get'])
+    def horarios(self, request):
+        """Obtiene todos los horarios configurados"""
+        configs = ConfiguracionTurno.objects.filter(activo=True)
+        if not configs.exists():
+            # Retornar horarios por defecto
+            from datetime import time
+            return Response({
+                'AM': {'inicio': '08:00', 'fin': '20:00'},
+                'PM': {'inicio': '20:00', 'fin': '08:00'},
+                'DOBLE': {'inicio': '08:00', 'fin': '08:00'},
+            })
+        
+        horarios = {}
+        for config in configs:
+            horarios[config.tipo] = {
+                'inicio': config.hora_inicio.strftime('%H:%M'),
+                'fin': config.hora_fin.strftime('%H:%M')
+            }
+        return Response(horarios)
+    
+    @action(detail=False, methods=['post'])
+    def actualizar_horarios(self, request):
+        """Actualiza los horarios de los turnos (solo admin)"""
+        if request.user.rol != 'administrador':
+            return Response({'error': 'Solo administradores pueden modificar horarios'},
+                          status=status.HTTP_403_FORBIDDEN)
+        
+        from datetime import datetime
+        horarios = request.data.get('horarios', {})
+        
+        for tipo, horario in horarios.items():
+            if tipo not in ['AM', 'PM', 'DOBLE']:
+                continue
+            
+            try:
+                hora_inicio = datetime.strptime(horario['inicio'], '%H:%M').time()
+                hora_fin = datetime.strptime(horario['fin'], '%H:%M').time()
+                
+                ConfiguracionTurno.objects.update_or_create(
+                    tipo=tipo,
+                    defaults={
+                        'hora_inicio': hora_inicio,
+                        'hora_fin': hora_fin,
+                        'activo': True
+                    }
+                )
+            except (KeyError, ValueError) as e:
+                return Response({'error': f'Error en horario {tipo}: {str(e)}'},
+                              status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({'mensaje': 'Horarios actualizados correctamente'})
+
+
+class TurnoViewSet(viewsets.ModelViewSet):
+    """ViewSet para gestión de turnos"""
+    queryset = Turno.objects.all()
+    serializer_class = TurnoSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = Turno.objects.all()
+        
+        # Filtrar por usuario
+        usuario_id = self.request.query_params.get('usuario')
+        if usuario_id:
+            queryset = queryset.filter(usuario_id=usuario_id)
+        
+        # Filtrar por fecha
+        fecha = self.request.query_params.get('fecha')
+        if fecha:
+            queryset = queryset.filter(fecha=fecha)
+        
+        # Filtrar por rango de fechas
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_desde:
+            queryset = queryset.filter(fecha__gte=fecha_desde)
+        if fecha_hasta:
+            queryset = queryset.filter(fecha__lte=fecha_hasta)
+        
+        # Filtrar por rol
+        rol = self.request.query_params.get('rol')
+        if rol:
+            queryset = queryset.filter(usuario__rol=rol)
+        
+        # Filtrar por tipo de turno
+        tipo_turno = self.request.query_params.get('tipo_turno')
+        if tipo_turno:
+            queryset = queryset.filter(tipo_turno=tipo_turno)
+        
+        # Filtrar solo en turno activo
+        en_turno = self.request.query_params.get('en_turno')
+        if en_turno == 'true':
+            queryset = queryset.filter(en_turno=True)
+        
+        return queryset.select_related('usuario', 'creado_por').order_by('fecha', 'usuario__first_name')
+    
+    @action(detail=False, methods=['get'])
+    def mi_turno(self, request):
+        """Obtiene el turno actual del usuario logueado"""
+        usuario = request.user
+        hoy = timezone.now().date()
+        
+        # Buscar turno programado
+        turno_actual = Turno.get_turno_actual(usuario)
+        
+        # Verificar si tiene turno hoy
+        turno_hoy = Turno.objects.filter(usuario=usuario, fecha=hoy).first()
+        
+        if turno_actual:
+            return Response({
+                'tiene_turno_programado': True,
+                'turno_actual': TurnoSerializer(turno_actual).data,
+                'en_horario': turno_actual.esta_en_horario(),
+                'en_turno': turno_actual.en_turno,
+                'puede_iniciar_voluntario': False,
+                'mensaje': f'Tienes turno {turno_actual.get_tipo_turno_display()}'
+            })
+        
+        if turno_hoy and turno_hoy.tipo_turno == 'DESCANSO':
+            return Response({
+                'tiene_turno_programado': True,
+                'turno_actual': TurnoSerializer(turno_hoy).data,
+                'en_horario': False,
+                'en_turno': turno_hoy.en_turno,
+                'puede_iniciar_voluntario': True,
+                'mensaje': 'Hoy es tu día de descanso'
+            })
+        
+        return Response({
+            'tiene_turno_programado': False,
+            'turno_actual': None,
+            'en_horario': False,
+            'en_turno': False,
+            'puede_iniciar_voluntario': True,
+            'mensaje': 'No tienes turno programado para hoy'
+        })
+    
+    @action(detail=False, methods=['post'])
+    def iniciar_turno(self, request):
+        """Inicia el turno del usuario"""
+        usuario = request.user
+        turno = Turno.get_turno_actual(usuario)
+        
+        if turno:
+            turno.iniciar_turno()
+            return Response({
+                'mensaje': 'Turno iniciado correctamente',
+                'turno': TurnoSerializer(turno).data
+            })
+        
+        return Response({'error': 'No tienes turno programado para iniciar'},
+                       status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'])
+    def iniciar_voluntario(self, request):
+        """Inicia un turno voluntario (cuando no tiene turno programado)"""
+        usuario = request.user
+        
+        # Verificar que no tenga ya un turno activo
+        if Turno.usuario_en_turno(usuario):
+            return Response({'error': 'Ya tienes un turno activo'},
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        turno = Turno.crear_turno_voluntario(usuario)
+        
+        return Response({
+            'mensaje': 'Turno voluntario iniciado correctamente',
+            'turno': TurnoSerializer(turno).data
+        })
+    
+    @action(detail=False, methods=['post'])
+    def finalizar_turno(self, request):
+        """Finaliza el turno actual del usuario"""
+        usuario = request.user
+        hoy = timezone.now().date()
+        
+        turno = Turno.objects.filter(usuario=usuario, fecha=hoy, en_turno=True).first()
+        
+        if turno:
+            turno.finalizar_turno()
+            return Response({
+                'mensaje': 'Turno finalizado correctamente',
+                'turno': TurnoSerializer(turno).data
+            })
+        
+        return Response({'error': 'No tienes turno activo para finalizar'},
+                       status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'])
+    def asignar_masivo(self, request):
+        """Asigna turnos de forma masiva a un usuario"""
+        if request.user.rol != 'administrador':
+            return Response({'error': 'Solo administradores pueden asignar turnos'},
+                          status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = TurnoAsignacionMasivaSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        usuario_id = serializer.validated_data['usuario_id']
+        turnos_data = serializer.validated_data['turnos']
+        usuario = Usuario.objects.get(id=usuario_id)
+        
+        turnos_creados = []
+        turnos_actualizados = []
+        
+        for turno_data in turnos_data:
+            turno, created = Turno.objects.update_or_create(
+                usuario=usuario,
+                fecha=turno_data['fecha'],
+                defaults={
+                    'tipo_turno': turno_data['tipo_turno'],
+                    'creado_por': request.user,
+                    'notas': turno_data.get('notas', '')
+                }
+            )
+            if created:
+                turnos_creados.append(turno)
+            else:
+                turnos_actualizados.append(turno)
+        
+        return Response({
+            'mensaje': f'{len(turnos_creados)} turnos creados, {len(turnos_actualizados)} turnos actualizados',
+            'turnos_creados': TurnoSerializer(turnos_creados, many=True).data,
+            'turnos_actualizados': TurnoSerializer(turnos_actualizados, many=True).data
+        })
+    
+    @action(detail=False, methods=['get'])
+    def calendario_mensual(self, request):
+        """Obtiene el calendario de turnos de un mes"""
+        from datetime import datetime, timedelta
+        import calendar
+        
+        # Obtener mes y año de los parámetros
+        try:
+            mes = int(request.query_params.get('mes', timezone.now().month))
+            anio = int(request.query_params.get('anio', timezone.now().year))
+        except ValueError:
+            return Response({'error': 'Mes y año deben ser números válidos'},
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        # Calcular primer y último día del mes
+        primer_dia = datetime(anio, mes, 1).date()
+        ultimo_dia = datetime(anio, mes, calendar.monthrange(anio, mes)[1]).date()
+        
+        # Obtener todos los turnos del mes
+        turnos = Turno.objects.filter(
+            fecha__gte=primer_dia,
+            fecha__lte=ultimo_dia
+        ).select_related('usuario').order_by('fecha', 'usuario__first_name')
+        
+        # Filtrar por rol si se especifica
+        rol = request.query_params.get('rol')
+        if rol:
+            turnos = turnos.filter(usuario__rol=rol)
+        
+        # Agrupar por fecha
+        calendario = {}
+        for turno in turnos:
+            fecha_str = turno.fecha.isoformat()
+            if fecha_str not in calendario:
+                calendario[fecha_str] = []
+            calendario[fecha_str].append(TurnoSerializer(turno).data)
+        
+        return Response({
+            'mes': mes,
+            'anio': anio,
+            'primer_dia': primer_dia.isoformat(),
+            'ultimo_dia': ultimo_dia.isoformat(),
+            'calendario': calendario
+        })
+    
+    @action(detail=False, methods=['get'])
+    def personal_en_turno(self, request):
+        """Obtiene el personal con turno asignado para hoy (excluyendo descansos)"""
+        hoy = timezone.now().date()
+        
+        # Turnos asignados para hoy que NO son descanso
+        turnos_hoy = Turno.objects.filter(
+            fecha=hoy
+        ).exclude(
+            tipo_turno='DESCANSO'
+        ).select_related('usuario')
+        
+        # Agrupar por rol
+        por_rol = {}
+        for turno in turnos_hoy:
+            rol = turno.usuario.rol
+            if rol not in por_rol:
+                por_rol[rol] = []
+            por_rol[rol].append({
+                'usuario_id': turno.usuario.id,
+                'nombre': turno.usuario.get_full_name(),
+                'tipo_turno': turno.tipo_turno,
+                'tipo_turno_display': turno.get_tipo_turno_display(),
+                'en_turno': turno.en_turno,
+                'esta_en_horario': turno.esta_en_horario(),
+                'hora_entrada': turno.hora_entrada.isoformat() if turno.hora_entrada else None,
+                'es_voluntario': turno.es_voluntario
+            })
+        
+        # Contar los que realmente están activos (en su horario)
+        total_activos = sum(
+            1 for turno in turnos_hoy if turno.esta_en_horario()
+        )
+        
+        return Response({
+            'fecha': hoy.isoformat(),
+            'total_asignados': turnos_hoy.count(),
+            'total_activos': total_activos,
+            'por_rol': por_rol
+        })
+    
+    @action(detail=False, methods=['get'])
+    def staff_disponible(self, request):
+        """Obtiene todo el staff disponible para asignar turnos"""
+        roles_staff = ['medico', 'tens', 'paramedico']
+        usuarios = Usuario.objects.filter(
+            rol__in=roles_staff,
+            is_active=True
+        ).order_by('rol', 'first_name')
+        
+        staff_por_rol = {}
+        for usuario in usuarios:
+            rol = usuario.rol
+            if rol not in staff_por_rol:
+                staff_por_rol[rol] = []
+            staff_por_rol[rol].append({
+                'id': usuario.id,
+                'nombre': usuario.get_full_name(),
+                'username': usuario.username,
+                'especialidad': usuario.especialidad
+            })
+        
+        return Response(staff_por_rol)

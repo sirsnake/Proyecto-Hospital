@@ -1,0 +1,12 @@
+[tool.poetry]
+name = "proyectohospital"
+version = "0.1.0"
+description = "Sistema de Urgencias Hospitalarias"
+authors = ["Diego"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

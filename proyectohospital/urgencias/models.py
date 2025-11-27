@@ -128,6 +128,7 @@ class FichaEmergencia(models.Model):
     
     fecha_registro = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
+    fecha_llegada_hospital = models.DateTimeField(blank=True, null=True, help_text="Fecha y hora de llegada al hospital")
     
     class Meta:
         verbose_name = 'Ficha de Emergencia'
@@ -459,12 +460,10 @@ class ConfiguracionHospital(models.Model):
 class Cama(models.Model):
     """Modelo para gestión de camas/boxes del hospital"""
     TIPO_CHOICES = [
-        ('box', 'Box de Atención'),
-        ('camilla', 'Camilla'),
+        ('box', 'Box'),
+        ('uci', 'UCI'),
+        ('uti', 'UTI'),
         ('cama_general', 'Cama General'),
-        ('cama_uci', 'Cama UCI'),
-        ('sala_emergencia', 'Sala de Emergencia'),
-        ('sala_espera', 'Sala de Espera'),
     ]
     
     ESTADO_CHOICES = [
@@ -476,7 +475,7 @@ class Cama(models.Model):
     ]
     
     numero = models.CharField(max_length=20, unique=True, help_text="Número o código de la cama")
-    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='general')
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='cama_general')
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='disponible')
     piso = models.IntegerField(validators=[MinValueValidator(1)], blank=True, null=True)
     sala = models.CharField(max_length=50, blank=True, null=True)
@@ -566,9 +565,11 @@ def archivo_upload_path(instance, filename):
 
 
 class ArchivoAdjunto(models.Model):
-    """Archivos adjuntos a fichas de emergencia (imágenes, PDFs, documentos)"""
+    """Archivos adjuntos a fichas de emergencia (imágenes, videos, audios, PDFs, documentos)"""
     TIPO_CHOICES = [
         ('imagen', 'Imagen'),
+        ('video', 'Video'),
+        ('audio', 'Audio'),
         ('pdf', 'PDF'),
         ('documento', 'Documento'),
         ('otro', 'Otro'),
@@ -582,6 +583,10 @@ class ArchivoAdjunto(models.Model):
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
     tamano = models.BigIntegerField(help_text="Tamaño en bytes")
     mime_type = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Campos adicionales para multimedia
+    duracion = models.FloatField(blank=True, null=True, help_text="Duración en segundos para audio/video")
+    thumbnail = models.ImageField(upload_to='thumbnails/', blank=True, null=True, help_text="Miniatura para videos")
     
     descripcion = models.TextField(blank=True, null=True)
     
@@ -605,20 +610,29 @@ class ArchivoAdjunto(models.Model):
         if mime_type:
             if mime_type.startswith('image/'):
                 return 'imagen'
+            elif mime_type.startswith('video/'):
+                return 'video'
+            elif mime_type.startswith('audio/'):
+                return 'audio'
             elif mime_type == 'application/pdf':
                 return 'pdf'
             elif mime_type in ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                              'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']:
+                              'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                              'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
                 return 'documento'
         
         # Fallback por extensión
         import os
         ext = os.path.splitext(filename)[1].lower()
-        if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']:
+        if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico', '.tiff', '.tif', '.heic', '.heif', '.avif']:
             return 'imagen'
+        elif ext in ['.mp4', '.mov', '.avi', '.mkv', '.m4v', '.3gp', '.wmv']:
+            return 'video'
+        elif ext in ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma', '.webm']:
+            return 'audio'
         elif ext == '.pdf':
             return 'pdf'
-        elif ext in ['.doc', '.docx', '.xls', '.xlsx', '.odt', '.ods']:
+        elif ext in ['.doc', '.docx', '.xls', '.xlsx', '.odt', '.ods', '.ppt', '.pptx', '.txt', '.rtf', '.csv']:
             return 'documento'
         
         return 'otro'
@@ -654,6 +668,107 @@ class MensajeChat(models.Model):
         """Marca el mensaje como leído por un usuario"""
         if usuario not in self.leido_por.all():
             self.leido_por.add(usuario)
+
+
+class NotaEvolucion(models.Model):
+    """
+    Notas de Evolución Clínica para pacientes hospitalizados/UCI.
+    
+    Las notas de evolución documentan el progreso del paciente sin modificar
+    el diagnóstico original. Son registros cronológicos que permiten seguir
+    la evolución del paciente durante su hospitalización.
+    
+    Formato típico: SOAP (Subjetivo, Objetivo, Análisis, Plan)
+    """
+    
+    TIPO_CHOICES = [
+        ('evolucion', 'Nota de Evolución'),
+        ('interconsulta', 'Interconsulta'),
+        ('procedimiento', 'Procedimiento'),
+        ('enfermeria', 'Nota de Enfermería'),
+        ('cambio_tratamiento', 'Cambio de Tratamiento'),
+        ('evento_adverso', 'Evento Adverso'),
+        ('traslado', 'Traslado'),
+    ]
+    
+    ficha = models.ForeignKey(
+        FichaEmergencia, 
+        on_delete=models.CASCADE, 
+        related_name='notas_evolucion'
+    )
+    medico = models.ForeignKey(
+        Usuario, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='notas_evolucion_creadas'
+    )
+    
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='evolucion')
+    fecha_hora = models.DateTimeField(auto_now_add=True)
+    
+    # Formato SOAP
+    subjetivo = models.TextField(
+        blank=True, 
+        help_text="Lo que el paciente refiere (síntomas, molestias, cómo se siente)"
+    )
+    objetivo = models.TextField(
+        blank=True, 
+        help_text="Hallazgos del examen físico, signos vitales, resultados de exámenes"
+    )
+    analisis = models.TextField(
+        blank=True, 
+        help_text="Interpretación clínica, evolución del diagnóstico, problemas identificados"
+    )
+    plan = models.TextField(
+        blank=True, 
+        help_text="Plan terapéutico, indicaciones, exámenes a solicitar"
+    )
+    
+    # Campos adicionales
+    signos_vitales = models.JSONField(
+        blank=True, 
+        null=True,
+        help_text="Signos vitales al momento de la nota: {pa_sistolica, pa_diastolica, fc, fr, temp, sat_o2}"
+    )
+    glasgow = models.IntegerField(
+        blank=True, 
+        null=True, 
+        help_text="Escala de Glasgow (3-15)"
+    )
+    
+    # Indicaciones médicas actualizadas
+    indicaciones_actualizadas = models.TextField(
+        blank=True, 
+        help_text="Nuevas indicaciones o modificaciones al tratamiento"
+    )
+    medicamentos_actualizados = models.TextField(
+        blank=True, 
+        help_text="Cambios en medicamentos"
+    )
+    
+    # Metadatos
+    editado = models.BooleanField(default=False)
+    fecha_edicion = models.DateTimeField(blank=True, null=True)
+    motivo_edicion = models.TextField(blank=True)
+    
+    class Meta:
+        verbose_name = 'Nota de Evolución'
+        verbose_name_plural = 'Notas de Evolución'
+        ordering = ['-fecha_hora']
+        indexes = [
+            models.Index(fields=['ficha', 'fecha_hora']),
+            models.Index(fields=['medico', 'fecha_hora']),
+        ]
+    
+    def __str__(self):
+        return f"[Ficha #{self.ficha.id}] {self.get_tipo_display()} - {self.fecha_hora.strftime('%d/%m/%Y %H:%M')}"
+    
+    def save(self, *args, **kwargs):
+        # Si es una edición, marcar como editado
+        if self.pk:
+            self.editado = True
+            self.fecha_edicion = timezone.now()
+        super().save(*args, **kwargs)
 
 
 class Notificacion(models.Model):
@@ -786,3 +901,252 @@ class Notificacion(models.Model):
                 datos_extra=datos_extra or {}
             ))
         return cls.objects.bulk_create(notificaciones)
+    
+    @classmethod
+    def notificar_rol_en_turno(cls, rol, tipo, titulo, mensaje, ficha=None, prioridad='media', datos_extra=None):
+        """Crear notificación solo para usuarios de un rol que están en turno activo"""
+        from django.utils import timezone
+        ahora = timezone.now()
+        
+        # Obtener usuarios en turno activo
+        usuarios_en_turno = Turno.objects.filter(
+            usuario__rol=rol,
+            usuario__is_active=True,
+            fecha=ahora.date(),
+            en_turno=True
+        ).values_list('usuario', flat=True)
+        
+        usuarios = Usuario.objects.filter(id__in=usuarios_en_turno)
+        notificaciones = []
+        for usuario in usuarios:
+            notificaciones.append(cls(
+                usuario=usuario,
+                tipo=tipo,
+                titulo=titulo,
+                mensaje=mensaje,
+                ficha=ficha,
+                prioridad=prioridad,
+                datos_extra=datos_extra or {}
+            ))
+        return cls.objects.bulk_create(notificaciones)
+    
+    @classmethod
+    def notificar_roles_en_turno(cls, roles, tipo, titulo, mensaje, ficha=None, prioridad='media', datos_extra=None):
+        """Crear notificación para usuarios de varios roles que están en turno activo"""
+        from django.utils import timezone
+        ahora = timezone.now()
+        
+        # Obtener usuarios en turno activo
+        usuarios_en_turno = Turno.objects.filter(
+            usuario__rol__in=roles,
+            usuario__is_active=True,
+            fecha=ahora.date(),
+            en_turno=True
+        ).values_list('usuario', flat=True)
+        
+        usuarios = Usuario.objects.filter(id__in=usuarios_en_turno)
+        notificaciones = []
+        for usuario in usuarios:
+            notificaciones.append(cls(
+                usuario=usuario,
+                tipo=tipo,
+                titulo=titulo,
+                mensaje=mensaje,
+                ficha=ficha,
+                prioridad=prioridad,
+                datos_extra=datos_extra or {}
+            ))
+        return cls.objects.bulk_create(notificaciones)
+
+
+class ConfiguracionTurno(models.Model):
+    """Configuración global de horarios de turnos"""
+    TIPO_TURNO_CHOICES = [
+        ('AM', 'Turno AM (Día)'),
+        ('PM', 'Turno PM (Noche)'),
+        ('DOBLE', 'Turno Doble (24h)'),
+    ]
+    
+    tipo = models.CharField(max_length=10, choices=TIPO_TURNO_CHOICES, unique=True)
+    hora_inicio = models.TimeField(help_text="Hora de inicio del turno")
+    hora_fin = models.TimeField(help_text="Hora de fin del turno")
+    descripcion = models.CharField(max_length=100, blank=True)
+    activo = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = 'Configuración de Turno'
+        verbose_name_plural = 'Configuraciones de Turnos'
+    
+    def __str__(self):
+        return f"{self.get_tipo_display()}: {self.hora_inicio.strftime('%H:%M')} - {self.hora_fin.strftime('%H:%M')}"
+    
+    @classmethod
+    def get_horarios_default(cls):
+        """Retorna los horarios por defecto si no hay configuración"""
+        from datetime import time
+        return {
+            'AM': {'inicio': time(8, 0), 'fin': time(20, 0)},
+            'PM': {'inicio': time(20, 0), 'fin': time(8, 0)},
+            'DOBLE': {'inicio': time(8, 0), 'fin': time(8, 0)},
+        }
+    
+    @classmethod
+    def get_horario(cls, tipo_turno):
+        """Obtiene el horario configurado para un tipo de turno"""
+        from datetime import time
+        try:
+            config = cls.objects.get(tipo=tipo_turno, activo=True)
+            return {'inicio': config.hora_inicio, 'fin': config.hora_fin}
+        except cls.DoesNotExist:
+            defaults = cls.get_horarios_default()
+            return defaults.get(tipo_turno, {'inicio': time(8, 0), 'fin': time(20, 0)})
+
+
+class Turno(models.Model):
+    """Asignación de turnos a usuarios del staff"""
+    TIPO_TURNO_CHOICES = [
+        ('AM', 'Turno AM (Día)'),
+        ('PM', 'Turno PM (Noche)'),
+        ('DOBLE', 'Turno Doble (24h)'),
+        ('DESCANSO', 'Descanso'),
+    ]
+    
+    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='turnos')
+    fecha = models.DateField(help_text="Fecha del turno")
+    tipo_turno = models.CharField(max_length=10, choices=TIPO_TURNO_CHOICES)
+    
+    # Control de asistencia
+    en_turno = models.BooleanField(default=False, help_text="Si el usuario está actualmente trabajando")
+    hora_entrada = models.DateTimeField(blank=True, null=True, help_text="Hora real de entrada")
+    hora_salida = models.DateTimeField(blank=True, null=True, help_text="Hora real de salida")
+    
+    # Turno voluntario (cuando no tiene turno pero quiere trabajar)
+    es_voluntario = models.BooleanField(default=False, help_text="Si es un turno voluntario sin asignación previa")
+    
+    # Metadata
+    creado_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='turnos_creados')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    notas = models.TextField(blank=True, null=True, help_text="Notas adicionales del turno")
+    
+    class Meta:
+        verbose_name = 'Turno'
+        verbose_name_plural = 'Turnos'
+        ordering = ['-fecha', 'usuario__first_name']
+        # Un usuario solo puede tener un turno por día (excepto descanso)
+        constraints = [
+            models.UniqueConstraint(
+                fields=['usuario', 'fecha'],
+                name='unique_turno_usuario_fecha'
+            )
+        ]
+    
+    def __str__(self):
+        return f"{self.usuario.get_full_name()} - {self.fecha} ({self.get_tipo_turno_display()})"
+    
+    def iniciar_turno(self):
+        """Marca el inicio del turno"""
+        from django.utils import timezone
+        self.en_turno = True
+        self.hora_entrada = timezone.now()
+        self.save(update_fields=['en_turno', 'hora_entrada'])
+    
+    def finalizar_turno(self):
+        """Marca el fin del turno"""
+        from django.utils import timezone
+        self.en_turno = False
+        self.hora_salida = timezone.now()
+        self.save(update_fields=['en_turno', 'hora_salida'])
+    
+    def get_horario(self):
+        """Obtiene las horas de inicio y fin del turno"""
+        return ConfiguracionTurno.get_horario(self.tipo_turno)
+    
+    def esta_en_horario(self):
+        """Verifica si la hora actual está dentro del horario del turno"""
+        from django.utils import timezone
+        from datetime import datetime, timedelta, date
+        
+        if self.tipo_turno == 'DESCANSO':
+            return False
+        
+        ahora = timezone.now()
+        horario = self.get_horario()
+        
+        # Asegurar que self.fecha sea un objeto date
+        fecha = self.fecha
+        if isinstance(fecha, str):
+            fecha = datetime.strptime(fecha, '%Y-%m-%d').date()
+        
+        # Crear datetime con la fecha del turno y las horas de inicio/fin
+        inicio = timezone.make_aware(datetime.combine(fecha, horario['inicio']))
+        
+        if self.tipo_turno == 'PM':
+            # El turno PM termina al día siguiente
+            fin = timezone.make_aware(datetime.combine(fecha + timedelta(days=1), horario['fin']))
+        elif self.tipo_turno == 'DOBLE':
+            # El turno doble es 24 horas
+            fin = inicio + timedelta(hours=24)
+        else:
+            fin = timezone.make_aware(datetime.combine(fecha, horario['fin']))
+        
+        return inicio <= ahora <= fin
+    
+    @classmethod
+    def get_turno_actual(cls, usuario):
+        """Obtiene el turno actual del usuario si existe"""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        ahora = timezone.now()
+        hoy = ahora.date()
+        ayer = hoy - timedelta(days=1)
+        
+        # Buscar turno de hoy o turno PM de ayer (que sigue hasta hoy en la mañana)
+        turnos = cls.objects.filter(
+            usuario=usuario,
+            fecha__in=[hoy, ayer],
+            tipo_turno__in=['AM', 'PM', 'DOBLE']
+        ).order_by('-fecha')
+        
+        for turno in turnos:
+            if turno.esta_en_horario():
+                return turno
+        
+        return None
+    
+    @classmethod
+    def usuario_en_turno(cls, usuario):
+        """Verifica si el usuario está actualmente en turno (ya sea programado o voluntario)"""
+        from django.utils import timezone
+        hoy = timezone.now().date()
+        
+        return cls.objects.filter(
+            usuario=usuario,
+            fecha=hoy,
+            en_turno=True
+        ).exists()
+    
+    @classmethod
+    def crear_turno_voluntario(cls, usuario):
+        """Crea un turno voluntario para el usuario"""
+        from django.utils import timezone
+        hoy = timezone.now().date()
+        
+        turno, created = cls.objects.get_or_create(
+            usuario=usuario,
+            fecha=hoy,
+            defaults={
+                'tipo_turno': 'AM' if timezone.now().hour < 20 else 'PM',
+                'es_voluntario': True,
+                'en_turno': True,
+                'hora_entrada': timezone.now()
+            }
+        )
+        
+        if not created:
+            turno.en_turno = True
+            turno.hora_entrada = timezone.now()
+            turno.save()
+        
+        return turno

@@ -16,8 +16,8 @@ function getApiUrl(): string {
   // Si estamos en un túnel de VS Code, usar el túnel del backend
   if (hostname.includes('devtunnels.ms')) {
     // Reemplazar el puerto del frontend por el del backend
-    // Ej: w7rcgjrp-3000.brs.devtunnels.ms -> w7rcgjrp-8000.brs.devtunnels.ms
-    const backendHost = hostname.replace('-3000.', '-8000.')
+    // Ej: m6cznqr0-3000.brs.devtunnels.ms -> m6cznqr0-8000.brs.devtunnels.ms
+    const backendHost = hostname.replace('-3000.', '-8000.').replace('-3001.', '-8000.')
     return `https://${backendHost}/api`
   }
   
@@ -180,11 +180,12 @@ export const pacientesAPI = {
 
 // Fichas de Emergencia
 export const fichasAPI = {
-  listar: async (filtros?: { estado?: string; prioridad?: string; paramedico?: number }) => {
+  listar: async (filtros?: { estado?: string; prioridad?: string; paramedico?: number; paciente_id?: number }) => {
     const params = new URLSearchParams()
     if (filtros?.estado) params.append('estado', filtros.estado)
     if (filtros?.prioridad) params.append('prioridad', filtros.prioridad)
     if (filtros?.paramedico) params.append('paramedico', filtros.paramedico.toString())
+    if (filtros?.paciente_id) params.append('paciente_id', filtros.paciente_id.toString())
     
     return fetchWithCredentials(`${API_URL}/fichas/?${params}`)
   },
@@ -366,6 +367,21 @@ export const diagnosticosAPI = {
   porFicha: async (fichaId: number) => {
     return fetchWithCredentials(`${API_URL}/diagnosticos/?ficha=${fichaId}`)
   },
+  
+  actualizarPorFicha: async (fichaId: number, data: any) => {
+    // Primero obtener el diagnóstico existente
+    const diagnosticos = await fetchWithCredentials(`${API_URL}/diagnosticos/?ficha=${fichaId}`)
+    if (diagnosticos && diagnosticos.length > 0) {
+      // Actualizar el diagnóstico existente - NO incluir ficha en el PATCH
+      const { ficha, ...dataWithoutFicha } = data
+      return fetchWithCredentials(`${API_URL}/diagnosticos/${diagnosticos[0].id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(dataWithoutFicha),
+      })
+    }
+    // Si no existe, crear uno nuevo (esto no debería pasar si llegamos aquí)
+    throw new Error('No se encontró diagnóstico existente para actualizar')
+  },
 }
 
 // Solicitudes de Exámenes
@@ -413,6 +429,82 @@ export const solicitudesExamenesAPI = {
     return fetchWithCredentials(`${API_URL}/solicitudes-examenes/${id}/completar/`, {
       method: 'POST',
       body: JSON.stringify({ resultados, observaciones }),
+    })
+  },
+}
+
+// API para Notas de Evolución Clínica
+export interface NotaEvolucion {
+  id: number
+  ficha: number
+  medico: {
+    id: number
+    nombre: string
+    rol: string
+  } | null
+  tipo: string
+  tipo_display: string
+  fecha_hora: string
+  subjetivo: string
+  objetivo: string
+  analisis: string
+  plan: string
+  signos_vitales: {
+    pa_sistolica?: number
+    pa_diastolica?: number
+    fc?: number
+    fr?: number
+    temp?: number
+    sat_o2?: number
+  } | null
+  glasgow: number | null
+  indicaciones_actualizadas: string
+  medicamentos_actualizados: string
+  editado: boolean
+  fecha_edicion: string | null
+  motivo_edicion: string
+}
+
+export interface NotaEvolucionCreate {
+  ficha_id: number
+  tipo?: string
+  subjetivo?: string
+  objetivo?: string
+  analisis?: string
+  plan?: string
+  signos_vitales?: Record<string, string | number | undefined>
+  glasgow?: number
+  indicaciones_actualizadas?: string
+  medicamentos_actualizados?: string
+  motivo_edicion?: string
+}
+
+export const notasEvolucionAPI = {
+  obtenerPorFicha: async (fichaId: number): Promise<NotaEvolucion[]> => {
+    return await fetchWithCredentials(`${API_URL}/notas-evolucion/por_ficha/?ficha_id=${fichaId}`)
+  },
+
+  obtenerResumen: async (fichaId: number) => {
+    return await fetchWithCredentials(`${API_URL}/notas-evolucion/resumen/?ficha_id=${fichaId}`)
+  },
+
+  crear: async (data: NotaEvolucionCreate): Promise<NotaEvolucion> => {
+    return await fetchWithCredentials(`${API_URL}/notas-evolucion/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  actualizar: async (id: number, data: Partial<NotaEvolucionCreate>): Promise<NotaEvolucion> => {
+    return await fetchWithCredentials(`${API_URL}/notas-evolucion/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  eliminar: async (id: number): Promise<void> => {
+    await fetchWithCredentials(`${API_URL}/notas-evolucion/${id}/`, {
+      method: 'DELETE',
     })
   },
 }
@@ -639,6 +731,10 @@ export const camasAPI = {
     return fetchWithCredentials(`${API_URL}/camas/estadisticas/`)
   },
 
+  tipos: async () => {
+    return fetchWithCredentials(`${API_URL}/camas/tipos/`)
+  },
+
   asignar: async (id: number, fichaId: number) => {
     return fetchWithCredentials(`${API_URL}/camas/${id}/asignar/`, {
       method: 'POST',
@@ -664,12 +760,38 @@ export const camasAPI = {
       body: JSON.stringify({ estado }),
     })
   },
+
+  crearMultiple: async (tipo: string, cantidad: number) => {
+    return fetchWithCredentials(`${API_URL}/camas/crear_multiple/`, {
+      method: 'POST',
+      body: JSON.stringify({ tipo, cantidad }),
+    })
+  },
+
+  eliminarMultiple: async (ids: number[]) => {
+    return fetchWithCredentials(`${API_URL}/camas/eliminar_multiple/`, {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    })
+  },
+
+  tiposDisponibles: async () => {
+    return fetchWithCredentials(`${API_URL}/camas/tipos_disponibles/`)
+  },
+
+  eliminarTipo: async (tipo: string) => {
+    return fetchWithCredentials(`${API_URL}/camas/eliminar_tipo/`, {
+      method: 'POST',
+      body: JSON.stringify({ tipo }),
+    })
+  },
 }
 
 // Médicos
 export const medicosAPI = {
-  listar: async () => {
-    return fetchWithCredentials(`${API_URL}/usuarios/medicos/`)
+  listar: async (soloEnTurno: boolean = false) => {
+    const params = soloEnTurno ? '?en_turno=true' : ''
+    return fetchWithCredentials(`${API_URL}/usuarios/medicos/${params}`)
   },
   
   asignarAFicha: async (fichaId: number, medicoId: number) => {
@@ -790,6 +912,215 @@ export const notificacionesAPI = {
     
     if (!response.ok) {
       throw new Error('Error al marcar notificaciones como leídas')
+    }
+    
+    return response.json()
+  },
+}
+
+// Turnos API
+export const turnosAPI = {
+  // Obtener mi turno actual
+  miTurno: async () => {
+    try {
+      return await fetchWithCredentials(`${API_URL}/turnos/mi_turno/`)
+    } catch (error) {
+      console.warn('Error al verificar turno:', error)
+      return {
+        tiene_turno_programado: false,
+        turno_actual: null,
+        en_horario: false,
+        en_turno: false,
+        puede_iniciar_voluntario: true,
+        mensaje: 'Error al verificar turno'
+      }
+    }
+  },
+
+  // Iniciar turno programado
+  iniciarTurno: async () => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const response = await fetch(`${API_URL}/turnos/iniciar_turno/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+    })
+    
+    return response.json()
+  },
+
+  // Iniciar turno voluntario
+  iniciarVoluntario: async () => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const response = await fetch(`${API_URL}/turnos/iniciar_voluntario/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+    })
+    
+    return response.json()
+  },
+
+  // Finalizar turno
+  finalizarTurno: async () => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const response = await fetch(`${API_URL}/turnos/finalizar_turno/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+    })
+    
+    return response.json()
+  },
+
+  // Calendario mensual
+  calendarioMensual: async (mes: number, anio: number, rol?: string) => {
+    let url = `${API_URL}/turnos/calendario_mensual/?mes=${mes}&anio=${anio}`
+    if (rol) {
+      url += `&rol=${rol}`
+    }
+    return await fetchWithCredentials(url)
+  },
+
+  // Personal en turno
+  personalEnTurno: async () => {
+    return await fetchWithCredentials(`${API_URL}/turnos/personal_en_turno/`)
+  },
+
+  // Staff disponible para asignar
+  staffDisponible: async () => {
+    return await fetchWithCredentials(`${API_URL}/turnos/staff_disponible/`)
+  },
+
+  // Obtener turnos con filtros
+  listar: async (params?: {
+    usuario?: number
+    fecha?: string
+    fecha_desde?: string
+    fecha_hasta?: string
+    rol?: string
+    tipo_turno?: string
+    en_turno?: boolean
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, String(value))
+        }
+      })
+    }
+    const url = `${API_URL}/turnos/${searchParams.toString() ? '?' + searchParams.toString() : ''}`
+    return await fetchWithCredentials(url)
+  },
+
+  // Asignar turnos masivamente
+  asignarMasivo: async (usuarioId: number, turnos: { fecha: string; tipo_turno: string }[]) => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const response = await fetch(`${API_URL}/turnos/asignar_masivo/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+      body: JSON.stringify({
+        usuario_id: usuarioId,
+        turnos
+      }),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Error asignando turnos' }))
+      throw new Error(error.detail || error.error || 'Error asignando turnos')
+    }
+    
+    return response.json()
+  },
+
+  // Crear/actualizar un turno
+  crear: async (data: { usuario: number; fecha: string; tipo_turno: string; notas?: string }) => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const response = await fetch(`${API_URL}/turnos/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+      body: JSON.stringify(data),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Error creando turno' }))
+      throw new Error(error.detail || 'Error creando turno')
+    }
+    
+    return response.json()
+  },
+
+  // Eliminar turno
+  eliminar: async (id: number) => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const response = await fetch(`${API_URL}/turnos/${id}/`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error('Error eliminando turno')
+    }
+    
+    return true
+  },
+
+  // Configuración de horarios
+  obtenerHorarios: async () => {
+    return await fetchWithCredentials(`${API_URL}/configuracion-turnos/horarios/`)
+  },
+
+  actualizarHorarios: async (horarios: Record<string, { inicio: string; fin: string }>) => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const response = await fetch(`${API_URL}/configuracion-turnos/actualizar_horarios/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+      body: JSON.stringify({ horarios }),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Error actualizando horarios' }))
+      throw new Error(error.detail || error.error || 'Error actualizando horarios')
     }
     
     return response.json()

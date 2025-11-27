@@ -9,6 +9,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   MessageCircle,
   Send,
   Paperclip,
@@ -24,6 +30,15 @@ import {
   ChevronUp,
   RefreshCw,
   ArrowLeft,
+  Camera,
+  Video,
+  Mic,
+  MicOff,
+  Square,
+  Play,
+  Pause,
+  Plus,
+  Maximize,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -105,12 +120,44 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null)
   const [mensajesNoLeidos, setMensajesNoLeidos] = useState(0)
   const [polling, setPolling] = useState(true)
+  
+  // Estados para grabación de audio
+  const [grabandoAudio, setGrabandoAudio] = useState(false)
+  const [tiempoGrabacion, setTiempoGrabacion] = useState(0)
+  
+  // Refs para grabación (evitar problemas de estado)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const audioStreamRef = useRef<MediaStream | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<number>(0)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const dropdownOpenRef = useRef(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  
+  // Detectar si es móvil/tablet (tiene cámara nativa)
+  const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  
+  // Helper para crear archivo desde blob (compatible con todos los navegadores)
+  const createFileFromBlob = (blob: Blob, filename: string, mimeType: string): File => {
+    try {
+      // Usar el constructor File global
+      const FileConstructor = globalThis.File || window.File
+      return new FileConstructor([blob], filename, { type: mimeType })
+    } catch {
+      // Fallback para navegadores que no soportan el constructor File
+      const file = blob as any
+      file.name = filename
+      file.lastModified = Date.now()
+      return file as File
+    }
+  }
 
   // Obtener CSRF token
   const getCsrfToken = useCallback(async () => {
@@ -243,8 +290,17 @@ export function ChatPanel({
   const subirArchivo = async (file: File): Promise<number | null> => {
     const csrfToken = await getCsrfToken()
     const formData = new FormData()
-    formData.append("archivo", file)
+    // Pasar el nombre explícitamente como tercer parámetro
+    // Esto es necesario porque algunos navegadores no mantienen el nombre del File
+    formData.append("archivo", file, file.name)
     formData.append("ficha_id", fichaId.toString())
+    
+    console.log("Subiendo archivo:", {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      ficha_id: fichaId
+    })
 
     try {
       const response = await fetch(`${API_BASE_URL}/archivos/upload/`, {
@@ -262,7 +318,20 @@ export function ChatPanel({
       } else {
         const errorData = await response.json().catch(() => ({}))
         console.error("Error subiendo archivo:", response.status, errorData)
-        setError(`Error al subir archivo: ${JSON.stringify(errorData)}`)
+        // Mostrar mensaje de error más descriptivo
+        let errorMsg = "Error al subir archivo"
+        if (errorData.archivo) {
+          errorMsg = Array.isArray(errorData.archivo) 
+            ? errorData.archivo.join(", ") 
+            : errorData.archivo
+        } else if (errorData.detail) {
+          errorMsg = errorData.detail
+        } else if (errorData.ficha_id) {
+          errorMsg = Array.isArray(errorData.ficha_id) 
+            ? errorData.ficha_id.join(", ") 
+            : errorData.ficha_id
+        }
+        setError(errorMsg)
       }
       return null
     } catch (err) {
@@ -353,16 +422,23 @@ export function ChatPanel({
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      // Validar tamaño (50MB)
-      if (file.size > 50 * 1024 * 1024) {
-        setError("El archivo no puede superar los 50MB")
+      // Validar tamaño (100MB para videos, 50MB para otros)
+      const maxSize = file.type.startsWith('video/') ? 100 * 1024 * 1024 : 50 * 1024 * 1024
+      if (file.size > maxSize) {
+        setError(`El archivo no puede superar los ${file.type.startsWith('video/') ? '100MB' : '50MB'}`)
         return
       }
 
-      // Validar extensión
+      // Validar extensión - ahora incluye videos y audios
       const extensionesPermitidas = [
-        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp",
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods"
+        // Imágenes
+        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".heif", ".avif",
+        // Videos
+        ".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v", ".3gp",
+        // Audio
+        ".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".webm",
+        // Documentos
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".ppt", ".pptx", ".txt"
       ]
       const extension = "." + file.name.split(".").pop()?.toLowerCase()
       if (!extensionesPermitidas.includes(extension)) {
@@ -378,12 +454,144 @@ export function ChatPanel({
       fileInputRef.current.value = ""
     }
   }
+  
+  // Capturar foto desde cámara (móvil)
+  const handleCameraCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setArchivoSeleccionado(file)
+      setError(null)
+    }
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = ""
+    }
+  }
+  
+  // Iniciar grabación de audio
+  const iniciarGrabacionAudio = async () => {
+    try {
+      // Limpiar grabación anterior si existe
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop())
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioStreamRef.current = stream
+      audioChunksRef.current = []
+      
+      // Detectar formato soportado
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+        ? 'audio/webm' 
+        : MediaRecorder.isTypeSupported('audio/mp4') 
+          ? 'audio/mp4' 
+          : 'audio/wav'
+      
+      const recorder = new MediaRecorder(stream, { mimeType })
+      mediaRecorderRef.current = recorder
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data)
+        }
+      }
+      
+      recorder.onstop = () => {
+        // Limpiar timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+          timerRef.current = null
+        }
+        
+        // Crear archivo de audio
+        if (audioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
+          // Limpiar mime type de codecs (ej: audio/webm; codecs=opus -> audio/webm)
+          const cleanMimeType = mimeType.split(';')[0].trim()
+          const extension = cleanMimeType.split('/')[1]
+          const audioFile = createFileFromBlob(audioBlob, `audio_${Date.now()}.${extension}`, cleanMimeType)
+          console.log("Audio creado:", { name: audioFile.name, type: audioFile.type, size: audioFile.size })
+          setArchivoSeleccionado(audioFile)
+        }
+        
+        // Detener stream
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach(track => track.stop())
+          audioStreamRef.current = null
+        }
+        
+        setTiempoGrabacion(0)
+        setGrabandoAudio(false)
+        mediaRecorderRef.current = null
+        audioChunksRef.current = []
+      }
+      
+      recorder.start(1000) // Capturar datos cada segundo
+      setGrabandoAudio(true)
+      setTiempoGrabacion(0)
+      
+      // Timer para mostrar duración
+      timerRef.current = setInterval(() => {
+        setTiempoGrabacion(prev => prev + 1)
+      }, 1000)
+      
+    } catch (err) {
+      console.error('Error accediendo al micrófono:', err)
+      setError("No se pudo acceder al micrófono. Verifica los permisos.")
+    }
+  }
+  
+  // Detener grabación de audio
+  const detenerGrabacionAudio = () => {
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.stop()
+      } catch (err) {
+        console.error('Error deteniendo grabación:', err)
+        // Forzar limpieza
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+          timerRef.current = null
+        }
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach(track => track.stop())
+          audioStreamRef.current = null
+        }
+        setGrabandoAudio(false)
+        setTiempoGrabacion(0)
+      }
+    }
+  }
+  
+  // Limpiar al desmontar
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop())
+      }
+    }
+  }, [])
+  
+  // Formatear tiempo de grabación
+  const formatearTiempoGrabacion = (segundos: number) => {
+    const mins = Math.floor(segundos / 60)
+    const secs = segundos % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   // Obtener icono según tipo de archivo
   const getIconoArchivo = (tipo: string) => {
     switch (tipo) {
       case "imagen":
         return <ImageIcon className="h-4 w-4" />
+      case "video":
+        return <Video className="h-4 w-4" />
+      case "audio":
+        return <Mic className="h-4 w-4" />
       case "pdf":
         return <FileText className="h-4 w-4" />
       default:
@@ -439,7 +647,94 @@ export function ChatPanel({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      enviarMensaje()
+      e.stopPropagation()
+      // Solo enviar si no está abierto el dropdown
+      if (!dropdownOpen) {
+        enviarMensaje()
+      }
+    }
+  }
+  
+  // Abrir cámara nativa (para dispositivos con cámara)
+  const abrirCamara = async (tipo: 'foto' | 'video') => {
+    if (isMobile) {
+      // En móvil, usar el input con capture
+      if (tipo === 'foto') {
+        cameraInputRef.current?.click()
+      } else {
+        videoInputRef.current?.click()
+      }
+    } else {
+      // En desktop, intentar usar getUserMedia
+      try {
+        const constraints = tipo === 'foto' 
+          ? { video: { facingMode: 'user' } }
+          : { video: { facingMode: 'user' }, audio: true }
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints)
+        
+        // Crear un video element temporal para capturar
+        const video = document.createElement('video')
+        video.srcObject = stream
+        video.play()
+        
+        if (tipo === 'foto') {
+          // Esperar a que el video cargue
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          // Capturar frame
+          const canvas = document.createElement('canvas')
+          canvas.width = video.videoWidth || 640
+          canvas.height = video.videoHeight || 480
+          const ctx = canvas.getContext('2d')
+          ctx?.drawImage(video, 0, 0)
+          
+          // Convertir a archivo
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const file = createFileFromBlob(blob, `foto_${Date.now()}.jpg`, 'image/jpeg')
+              setArchivoSeleccionado(file)
+            }
+            stream.getTracks().forEach(t => t.stop())
+          }, 'image/jpeg', 0.8)
+        } else {
+          // Grabar video
+          const recorder = new MediaRecorder(stream)
+          const chunks: Blob[] = []
+          
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data)
+          }
+          
+          recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'video/webm' })
+            const file = createFileFromBlob(blob, `video_${Date.now()}.webm`, 'video/webm')
+            setArchivoSeleccionado(file)
+            stream.getTracks().forEach(t => t.stop())
+          }
+          
+          recorder.start()
+          // Grabar 10 segundos máximo, o hasta que el usuario pare
+          setTimeout(() => {
+            if (recorder.state !== 'inactive') recorder.stop()
+          }, 10000)
+        }
+      } catch (err) {
+        console.error('Error accediendo a la cámara:', err)
+        setError('No se pudo acceder a la cámara. Usa "Archivo" para seleccionar una imagen.')
+      }
+    }
+  }
+  
+  // Manejar captura de video desde cámara
+  const handleVideoCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setArchivoSeleccionado(file)
+      setError(null)
+    }
+    if (videoInputRef.current) {
+      videoInputRef.current.value = ""
     }
   }
 
@@ -541,12 +836,59 @@ export function ChatPanel({
                                 alt={mensaje.archivo_adjunto.nombre_original}
                                 className="max-w-full max-h-48 rounded-lg object-cover"
                                 loading="lazy"
+                                onError={(e) => {
+                                  // Fallback si la imagen no carga
+                                  (e.target as HTMLImageElement).style.display = 'none'
+                                }}
                               />
                               <p className="text-xs mt-1 opacity-70 flex items-center gap-1">
                                 <ImageIcon className="h-3 w-3" />
                                 {mensaje.archivo_adjunto.nombre_original}
                               </p>
                             </a>
+                          ) : mensaje.archivo_adjunto.tipo === 'video' ? (
+                            /* Si es video, mostrar reproductor con fullscreen */
+                            <div className="rounded-lg overflow-hidden bg-black/20 relative group">
+                              <video 
+                                src={mensaje.archivo_adjunto.archivo}
+                                controls
+                                className="max-w-full max-h-64 rounded-lg"
+                                preload="metadata"
+                                playsInline
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-2 right-2 h-8 w-8 bg-black/50 hover:bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  const video = e.currentTarget.previousElementSibling as HTMLVideoElement
+                                  if (video?.requestFullscreen) {
+                                    video.requestFullscreen()
+                                  } else if ((video as any)?.webkitEnterFullscreen) {
+                                    (video as any).webkitEnterFullscreen()
+                                  }
+                                }}
+                                title="Pantalla completa"
+                              >
+                                <Maximize className="h-4 w-4 text-white" />
+                              </Button>
+                              <p className="text-xs mt-1 opacity-70 flex items-center gap-1 p-1">
+                                <Video className="h-3 w-3" />
+                                {mensaje.archivo_adjunto.nombre_original}
+                              </p>
+                            </div>
+                          ) : mensaje.archivo_adjunto.tipo === 'audio' ? (
+                            /* Si es audio, mostrar reproductor de audio */
+                            <div className="flex items-center gap-2 p-2 bg-black/20 rounded-lg">
+                              <Mic className="h-4 w-4 flex-shrink-0" />
+                              <audio 
+                                src={mensaje.archivo_adjunto.archivo}
+                                controls
+                                className="flex-1 h-8"
+                                preload="metadata"
+                              />
+                            </div>
                           ) : (
                             /* Para otros archivos (PDF, docs, etc) */
                             <a
@@ -613,22 +955,86 @@ export function ChatPanel({
               type="file"
               className="hidden"
               onChange={handleFileSelect}
-              accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.pdf,.doc,.docx,.xls,.xlsx,.odt,.ods"
+              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.ppt,.pptx,.txt"
             />
-            <Button
-              variant="outline"
-              size="icon"
-              className={cn(
-                "flex-shrink-0 border-slate-700",
-                archivoSeleccionado 
-                  ? "text-blue-400 border-blue-500/50 bg-blue-500/10" 
-                  : "text-slate-400"
-              )}
-              onClick={() => fileInputRef.current?.click()}
-              title={archivoSeleccionado ? "Cambiar archivo" : "Adjuntar archivo"}
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
+            {/* Input para captura de foto desde cámara en móvil */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleCameraCapture}
+            />
+            {/* Input para captura de video desde cámara en móvil */}
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleVideoCapture}
+            />
+            
+            {/* Menú de adjuntos */}
+            <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={cn(
+                    "flex-shrink-0 border-slate-700",
+                    archivoSeleccionado 
+                      ? "text-blue-400 border-blue-500/50 bg-blue-500/10" 
+                      : "text-slate-400"
+                  )}
+                  title="Adjuntar archivo"
+                  type="button"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem onSelect={() => { setDropdownOpen(false); setTimeout(() => fileInputRef.current?.click(), 100) }}>
+                  <Paperclip className="h-4 w-4 mr-2" />
+                  Archivo
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => { setDropdownOpen(false); setTimeout(() => abrirCamara('foto'), 100) }}>
+                  <Camera className="h-4 w-4 mr-2" />
+                  Tomar foto
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => { setDropdownOpen(false); setTimeout(() => abrirCamara('video'), 100) }}>
+                  <Video className="h-4 w-4 mr-2" />
+                  Grabar video
+                </DropdownMenuItem>
+                {!grabandoAudio ? (
+                  <DropdownMenuItem onSelect={() => { setDropdownOpen(false); setTimeout(() => iniciarGrabacionAudio(), 100) }}>
+                    <Mic className="h-4 w-4 mr-2" />
+                    Grabar audio
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            {/* Botón de grabación de audio (visible cuando está grabando) */}
+            {grabandoAudio && (
+              <Button
+                variant="destructive"
+                size="icon"
+                className="flex-shrink-0 animate-pulse"
+                onClick={detenerGrabacionAudio}
+                title="Detener grabación"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            )}
+            {grabandoAudio && (
+              <div className="flex items-center text-red-400 text-sm px-2">
+                <span className="animate-pulse mr-2">●</span>
+                {formatearTiempoGrabacion(tiempoGrabacion)}
+              </div>
+            )}
+            
             <textarea
               value={nuevoMensaje}
               onChange={(e) => {
@@ -762,6 +1168,43 @@ export function ChatPanel({
                                   className="max-w-full rounded max-h-48 object-cover"
                                 />
                               </a>
+                            ) : mensaje.archivo_adjunto.tipo === "video" ? (
+                              <div className="rounded-lg overflow-hidden bg-black/20 relative group">
+                                <video 
+                                  src={mensaje.archivo_adjunto.archivo}
+                                  controls
+                                  className="max-w-full max-h-48 rounded-lg"
+                                  preload="metadata"
+                                  playsInline
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute top-2 right-2 h-6 w-6 bg-black/50 hover:bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    const video = e.currentTarget.previousElementSibling as HTMLVideoElement
+                                    if (video?.requestFullscreen) {
+                                      video.requestFullscreen()
+                                    } else if ((video as any)?.webkitEnterFullscreen) {
+                                      (video as any).webkitEnterFullscreen()
+                                    }
+                                  }}
+                                  title="Pantalla completa"
+                                >
+                                  <Maximize className="h-3 w-3 text-white" />
+                                </Button>
+                              </div>
+                            ) : mensaje.archivo_adjunto.tipo === "audio" ? (
+                              <div className="flex items-center gap-2 p-2 bg-black/10 dark:bg-black/20 rounded-lg">
+                                <Mic className="h-4 w-4 flex-shrink-0" />
+                                <audio 
+                                  src={mensaje.archivo_adjunto.archivo}
+                                  controls
+                                  className="flex-1 h-8"
+                                  preload="metadata"
+                                />
+                              </div>
                             ) : (
                               <a
                                 href={`${API_BASE_URL}/archivos/${mensaje.archivo_adjunto.id}/download/`}

@@ -13,13 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { GestionTurnos } from "@/components/gestion-turnos"
 import { toast } from "@/hooks/use-toast"
 import { 
   Bed, 
   Clock, 
   Users, 
   AlertTriangle,
-  Settings,
   Save,
   RotateCcw,
   Shield,
@@ -29,7 +29,6 @@ import {
   UserCheck,
   RefreshCw,
   HeartPulse,
-  Siren,
   Plus,
   Trash2,
   Calendar,
@@ -37,7 +36,7 @@ import {
   Download,
   Timer,
   Check,
-  Hospital
+  Settings
 } from "lucide-react"
 
 export default function AdministradorDashboard() {
@@ -55,9 +54,12 @@ export default function AdministradorDashboard() {
   const [camas, setCamas] = useState<any[]>([])
   const [camasLoading, setCamasLoading] = useState(false)
   const [modalNuevaCama, setModalNuevaCama] = useState(false)
-  const [nuevaCama, setNuevaCama] = useState({ numero: "", tipo: "general", piso: 1 })
+  const [modalGestionarCamas, setModalGestionarCamas] = useState(false)
+  const [nuevaCama, setNuevaCama] = useState({ tipo: "box", cantidad: 1 })
   const [filtroCamaTipo, setFiltroCamaTipo] = useState("all")
   const [estadisticasCamas, setEstadisticasCamas] = useState<any>(null)
+  const [camasSeleccionadas, setCamasSeleccionadas] = useState<number[]>([])
+  const [tiposDisponibles, setTiposDisponibles] = useState<any[]>([])
   
   // Estados para usuarios
   const [usuarios, setUsuarios] = useState<any[]>([])
@@ -107,7 +109,7 @@ export default function AdministradorDashboard() {
   useEffect(() => {
     const currentUser = getSession()
     if (!currentUser || currentUser.rol !== "administrador") {
-      navigate("/")
+      navigate("/", { replace: true })
       return
     }
     setUser(currentUser)
@@ -157,6 +159,14 @@ export default function AdministradorDashboard() {
         console.error('Error cargando estadísticas de camas:', error)
       }
       
+      // Cargar logs recientes para el dashboard
+      try {
+        const logsResponse = await auditLogsAPI.listar({})
+        setLogs(logsResponse.results || logsResponse || [])
+      } catch (error) {
+        console.error('Error cargando logs:', error)
+      }
+      
     } catch (error) {
       console.error('Error cargando dashboard:', error)
     }
@@ -170,6 +180,9 @@ export default function AdministradorDashboard() {
       // Cargar estadísticas también
       const stats = await camasAPI.estadisticas()
       setEstadisticasCamas(stats)
+      // Cargar tipos disponibles
+      const tipos = await camasAPI.tiposDisponibles()
+      setTiposDisponibles(tipos)
     } catch (error) {
       console.error('Error cargando camas:', error)
     } finally {
@@ -177,25 +190,48 @@ export default function AdministradorDashboard() {
     }
   }
 
-  const handleCrearCama = async () => {
-    try {
-      if (!nuevaCama.numero.trim()) {
-        toast({ title: "Error", description: "Ingrese número de cama", variant: "destructive" })
-        return
-      }
-      await camasAPI.crear({
-        numero: nuevaCama.numero,
-        tipo: nuevaCama.tipo,
-        piso: nuevaCama.piso,
-        estado: 'disponible'
+  const handleEliminarTipoCamas = async (tipo: string) => {
+    const tipoInfo = tiposDisponibles.find(t => t.tipo === tipo)
+    if (!tipoInfo) return
+    
+    if (tipoInfo.ocupadas > 0) {
+      toast({ 
+        title: "No se puede eliminar", 
+        description: `Hay ${tipoInfo.ocupadas} camas ocupadas de tipo ${tipo.toUpperCase()}. Libere las camas primero.`, 
+        variant: "destructive" 
       })
-      toast({ title: "Cama creada", description: `Cama ${nuevaCama.numero} creada exitosamente` })
-      setModalNuevaCama(false)
-      setNuevaCama({ numero: "", tipo: "general", piso: 1 })
+      return
+    }
+    
+    if (!confirm(`¿Eliminar TODAS las ${tipoInfo.total} camas de tipo ${tipo.toUpperCase()}?`)) return
+    
+    try {
+      await camasAPI.eliminarTipo(tipo)
+      toast({ title: "Camas eliminadas", description: `Se eliminaron todas las camas de tipo ${tipo.toUpperCase()}` })
       cargarCamas()
       cargarConfiguracion()
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "No se pudo crear la cama", variant: "destructive" })
+      toast({ title: "Error", description: error.message || "No se pudieron eliminar", variant: "destructive" })
+    }
+  }
+
+  const handleCrearCama = async () => {
+    try {
+      if (nuevaCama.cantidad < 1 || nuevaCama.cantidad > 50) {
+        toast({ title: "Error", description: "La cantidad debe estar entre 1 y 50", variant: "destructive" })
+        return
+      }
+      await camasAPI.crearMultiple(nuevaCama.tipo, nuevaCama.cantidad)
+      toast({ 
+        title: "Camas creadas", 
+        description: `Se crearon ${nuevaCama.cantidad} camas de tipo ${nuevaCama.tipo.toUpperCase()}` 
+      })
+      setModalNuevaCama(false)
+      setNuevaCama({ tipo: "box", cantidad: 1 })
+      cargarCamas()
+      cargarConfiguracion()
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "No se pudieron crear las camas", variant: "destructive" })
     }
   }
 
@@ -209,6 +245,29 @@ export default function AdministradorDashboard() {
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "No se pudo eliminar", variant: "destructive" })
     }
+  }
+
+  const handleEliminarCamasSeleccionadas = async () => {
+    if (camasSeleccionadas.length === 0) {
+      toast({ title: "Error", description: "Seleccione camas para eliminar", variant: "destructive" })
+      return
+    }
+    if (!confirm(`¿Eliminar ${camasSeleccionadas.length} camas seleccionadas? Solo se eliminarán las que estén disponibles.`)) return
+    try {
+      await camasAPI.eliminarMultiple(camasSeleccionadas)
+      toast({ title: "Camas eliminadas", description: `Se eliminaron las camas seleccionadas` })
+      setCamasSeleccionadas([])
+      cargarCamas()
+      cargarConfiguracion()
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "No se pudieron eliminar", variant: "destructive" })
+    }
+  }
+
+  const toggleSeleccionCama = (id: number) => {
+    setCamasSeleccionadas(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
   }
 
   const cargarUsuarios = async () => {
@@ -238,6 +297,9 @@ export default function AdministradorDashboard() {
       const params: any = {}
       if (filtroAccion && filtroAccion !== 'all') params.accion = filtroAccion
       if (filtroModelo && filtroModelo !== 'all') params.modelo = filtroModelo
+      if (fechaDesde) params.fecha_desde = fechaDesde
+      if (fechaHasta) params.fecha_hasta = fechaHasta
+      if (filtroUsuarioLog) params.usuario = filtroUsuarioLog
       
       const response = await auditLogsAPI.listar(params)
       setLogs(response.results || response || [])
@@ -403,6 +465,53 @@ export default function AdministradorDashboard() {
     }
   }
 
+  // Función para exportar reporte a CSV
+  const handleExportarReporte = () => {
+    const fechaReporte = new Date().toISOString().split('T')[0]
+    
+    // Crear contenido CSV
+    let csv = "REPORTE DEL SISTEMA - HOSPITAL URGENCIAS\n"
+    csv += `Fecha de generación: ${new Date().toLocaleString('es-CL')}\n`
+    csv += `Período: ${reporteFechaDesde || 'Sin definir'} - ${reporteFechaHasta || 'Sin definir'}\n\n`
+    
+    csv += "=== RESUMEN DE ATENCIONES ===\n"
+    csv += `Pacientes en urgencias,${fichasActivas.length}\n`
+    csv += `Atendidos hoy,${fichasAtendidas.length}\n`
+    csv += `Tiempo espera promedio,${tiempoEsperaPromedio || 0} min\n\n`
+    
+    csv += "=== ESTADO DE CAMAS ===\n"
+    csv += `Total camas,${estadisticasCamas?.total || 0}\n`
+    csv += `Ocupadas,${estadisticasCamas?.ocupadas || 0}\n`
+    csv += `Disponibles,${estadisticasCamas?.disponibles || 0}\n`
+    csv += `Porcentaje ocupación,${estadisticasCamas?.porcentaje_ocupacion || 0}%\n\n`
+    
+    csv += "=== PERSONAL ===\n"
+    if (estadisticas?.usuarios_por_rol) {
+      Object.entries(estadisticas.usuarios_por_rol).forEach(([rol, cantidad]) => {
+        csv += `${rol},${cantidad}\n`
+      })
+    }
+    csv += `Total,${estadisticas?.total_usuarios || 0}\n\n`
+    
+    csv += "=== DETALLE DE CAMAS ===\n"
+    csv += "Número,Tipo,Estado,Paciente\n"
+    camas.forEach(cama => {
+      csv += `${cama.numero},${cama.tipo},${cama.estado},${cama.paciente_nombre || '-'}\n`
+    })
+    
+    // Descargar archivo
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `reporte_hospital_${fechaReporte}.csv`
+    link.click()
+    
+    toast({
+      title: "✅ Reporte exportado",
+      description: `Archivo descargado: reporte_hospital_${fechaReporte}.csv`,
+    })
+  }
+
   const handleCerrarSesion = async () => {
     try {
       await authAPI.logout()
@@ -410,7 +519,7 @@ export default function AdministradorDashboard() {
       console.error('Error al cerrar sesión:', error)
     } finally {
       clearSession()
-      navigate("/")
+      navigate("/", { replace: true })
     }
   }
 
@@ -460,6 +569,10 @@ export default function AdministradorDashboard() {
               <Activity className="w-4 h-4" />
               Dashboard
             </TabsTrigger>
+            <TabsTrigger value="turnos" className="flex items-center gap-1">
+              <Calendar className="w-4 h-4" />
+              Turnos
+            </TabsTrigger>
             <TabsTrigger value="camas" className="flex items-center gap-1">
               <Bed className="w-4 h-4" />
               Camas
@@ -476,33 +589,15 @@ export default function AdministradorDashboard() {
               <Shield className="w-4 h-4" />
               Auditoría
             </TabsTrigger>
-            <TabsTrigger value="config" className="flex items-center gap-1">
-              <Settings className="w-4 h-4" />
-              Config
-            </TabsTrigger>
           </TabsList>
+
+          {/* Tab: Turnos */}
+          <TabsContent value="turnos" className="space-y-6">
+            <GestionTurnos />
+          </TabsContent>
 
           {/* Tab: Dashboard */}
           <TabsContent value="dashboard" className="space-y-6">
-            {/* Alerta de pacientes críticos */}
-            {fichasActivas.filter((f: any) => f.prioridad === 'C1' || f.prioridad === 'C2').length > 0 && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
-                  <Siren className="w-6 h-6 text-red-400 animate-pulse" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-red-400">Pacientes Críticos en Urgencias</h3>
-                  <p className="text-sm text-slate-400">
-                    {fichasActivas.filter((f: any) => f.prioridad === 'C1').length} pacientes C1 (urgencia vital) y{' '}
-                    {fichasActivas.filter((f: any) => f.prioridad === 'C2').length} pacientes C2 (riesgo vital)
-                  </p>
-                </div>
-                <Button variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10">
-                  Ver pacientes
-                </Button>
-              </div>
-            )}
-
             {/* Métricas principales */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
               <StatCard
@@ -541,70 +636,6 @@ export default function AdministradorDashboard() {
                 icon={<Users className="w-5 h-5 text-cyan-400" />}
                 description={`${Object.values(estadisticas?.usuarios_por_rol || {}).reduce((a: number, b: any) => a + b, 0)} activos`}
               />
-            </div>
-
-            {/* Distribución por prioridad */}
-            <div className="grid gap-6 md:grid-cols-4">
-              <Card className="bg-gradient-to-br from-red-500/10 to-red-500/5 border-red-500/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400">C1 - Urgencia Vital</p>
-                      <p className="text-3xl font-bold text-red-400">
-                        {fichasActivas.filter((f: any) => f.prioridad === 'C1').length}
-                      </p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
-                      <Siren className="w-6 h-6 text-red-400" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="bg-gradient-to-br from-orange-500/10 to-orange-500/5 border-orange-500/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400">C2 - Riesgo Vital</p>
-                      <p className="text-3xl font-bold text-orange-400">
-                        {fichasActivas.filter((f: any) => f.prioridad === 'C2').length}
-                      </p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center">
-                      <AlertTriangle className="w-6 h-6 text-orange-400" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="bg-gradient-to-br from-yellow-500/10 to-yellow-500/5 border-yellow-500/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400">C3 - Urgente</p>
-                      <p className="text-3xl font-bold text-yellow-400">
-                        {fichasActivas.filter((f: any) => f.prioridad === 'C3').length}
-                      </p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                      <Clock className="w-6 h-6 text-yellow-400" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400">C4/C5 - Menor</p>
-                      <p className="text-3xl font-bold text-green-400">
-                        {fichasActivas.filter((f: any) => f.prioridad === 'C4' || f.prioridad === 'C5').length}
-                      </p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-                      <UserCheck className="w-6 h-6 text-green-400" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
@@ -648,8 +679,8 @@ export default function AdministradorDashboard() {
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Pacientes en espera</span>
-                      <span className="text-2xl font-bold text-orange-500">0</span>
+                      <span className="text-sm font-medium">Fichas en ruta</span>
+                      <span className="text-2xl font-bold text-orange-500">{estadisticas?.fichas_en_ruta || 0}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">En atención</span>
@@ -761,70 +792,94 @@ export default function AdministradorDashboard() {
                       </SelectTrigger>
                       <SelectContent className="bg-slate-800 border-slate-700">
                         <SelectItem value="all" className="text-white">Todos los tipos</SelectItem>
-                        <SelectItem value="general" className="text-white">General</SelectItem>
-                        <SelectItem value="uci" className="text-white">UCI</SelectItem>
                         <SelectItem value="box" className="text-white">Box</SelectItem>
-                        <SelectItem value="aislamiento" className="text-white">Aislamiento</SelectItem>
+                        <SelectItem value="uci" className="text-white">UCI</SelectItem>
+                        <SelectItem value="uti" className="text-white">UTI</SelectItem>
+                        <SelectItem value="cama_general" className="text-white">Cama General</SelectItem>
                       </SelectContent>
                     </Select>
                     <Button variant="outline" onClick={cargarCamas} className="border-slate-600">
                       <RefreshCw className="w-4 h-4" />
                     </Button>
+                    {camasSeleccionadas.length > 0 && (
+                      <Button variant="destructive" onClick={handleEliminarCamasSeleccionadas}>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Eliminar ({camasSeleccionadas.length})
+                      </Button>
+                    )}
                     <Button onClick={() => setModalNuevaCama(true)} className="bg-green-600 hover:bg-green-700">
                       <Plus className="w-4 h-4 mr-2" />
-                      Nueva Cama
+                      Agregar Camas
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        cargarCamas()
+                        setModalGestionarCamas(true)
+                      }} 
+                      className="border-blue-600 text-blue-400 hover:bg-blue-600/20"
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      Gestionar Tipos
                     </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
+                {/* Resumen por tipo */}
+                {estadisticasCamas?.por_tipo && (
+                  <div className="grid grid-cols-4 gap-4 mb-6">
+                    {Object.entries(estadisticasCamas.por_tipo).map(([tipo, stats]: [string, any]) => (
+                      <div key={tipo} className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
+                        <p className="text-sm font-medium text-white">{tipo.toUpperCase().replace('_', ' ')}</p>
+                        <p className="text-2xl font-bold text-white">{stats.total}</p>
+                        <p className="text-xs text-slate-400">
+                          {stats.disponibles} disponibles / {stats.ocupadas} ocupadas
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {camasLoading ? (
                   <div className="text-center py-12 text-slate-400">Cargando camas...</div>
                 ) : camas.length === 0 ? (
                   <div className="text-center py-12">
                     <Bed className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                     <p className="text-lg font-medium text-white">No hay camas registradas</p>
-                    <p className="text-sm text-slate-400 mt-1">Haz clic en "Nueva Cama" para agregar una</p>
+                    <p className="text-sm text-slate-400 mt-1">Haz clic en "Agregar Camas" para crear</p>
                   </div>
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
                     {camas.map((cama: any) => (
                       <div 
                         key={cama.id} 
-                        className={`rounded-xl p-4 border transition-all ${
+                        className={`rounded-xl p-3 border transition-all cursor-pointer ${
+                          camasSeleccionadas.includes(cama.id) ? 'ring-2 ring-blue-500' : ''
+                        } ${
                           cama.estado === 'disponible' ? 'bg-green-500/10 border-green-500/30' :
-                          'bg-red-500/10 border-red-500/30'
+                          cama.estado === 'ocupada' ? 'bg-red-500/10 border-red-500/30' :
+                          'bg-yellow-500/10 border-yellow-500/30'
                         }`}
+                        onClick={() => cama.estado === 'disponible' && toggleSeleccionCama(cama.id)}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold text-white">{cama.numero}</span>
-                          <div className="flex items-center gap-2">
-                            <Badge className={
-                              cama.estado === 'disponible' ? 'bg-green-500/20 text-green-400' :
-                              'bg-red-500/20 text-red-400'
-                            }>
-                              {cama.estado}
-                            </Badge>
-                            {cama.estado === 'disponible' && (
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                                onClick={() => handleEliminarCama(cama.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-semibold text-white text-sm">{cama.numero}</span>
+                          <Badge className={`text-xs ${
+                            cama.estado === 'disponible' ? 'bg-green-500/20 text-green-400' :
+                            cama.estado === 'ocupada' ? 'bg-red-500/20 text-red-400' :
+                            'bg-yellow-500/20 text-yellow-400'
+                          }`}>
+                            {cama.estado}
+                          </Badge>
                         </div>
-                        <p className="text-xs text-slate-400 mb-2">
-                          Tipo: {cama.tipo} | Piso: {cama.piso}
+                        <p className="text-xs text-slate-400">
+                          {cama.tipo_display || cama.tipo.toUpperCase().replace('_', ' ')}
                         </p>
                         {cama.ficha_actual && (
-                          <div className="bg-slate-800/50 rounded-lg p-2">
-                            <p className="text-sm text-white">{cama.paciente_nombre || `Paciente #${cama.ficha_actual}`}</p>
-                            <p className="text-xs text-slate-400">Desde: {new Date(cama.fecha_asignacion).toLocaleDateString('es-CL')}</p>
-                          </div>
+                          <p className="text-xs text-slate-300 mt-1 truncate">
+                            {cama.paciente_nombre || `Paciente`}
+                          </p>
                         )}
                       </div>
                     ))}
@@ -865,7 +920,7 @@ export default function AdministradorDashboard() {
                         className="w-40 bg-slate-800 border-slate-600"
                       />
                     </div>
-                    <Button variant="outline" className="border-slate-600">
+                    <Button variant="outline" className="border-slate-600" onClick={handleExportarReporte}>
                       <Download className="w-4 h-4 mr-2" />
                       Exportar
                     </Button>
@@ -930,32 +985,35 @@ export default function AdministradorDashboard() {
                 <div className="border border-slate-700 rounded-lg p-4 bg-slate-800/30">
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Users className="w-5 h-5 text-purple-400" />
-                    Personal Activo
+                    Personal en Turno Hoy
                   </h3>
+                  <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                    <p className="text-sm text-slate-400">Total personal en turno</p>
+                    <p className="text-3xl font-bold text-emerald-400">{estadisticas?.personal_en_turno || 0}</p>
+                  </div>
                   <div className="space-y-3">
-                    {estadisticas?.usuarios_por_rol && Object.entries(estadisticas.usuarios_por_rol).map(([rol, cantidad]: [string, any]) => (
+                    {['medico', 'tens', 'paramedico'].map((rol) => (
                       <div key={rol} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-3 border border-slate-700">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
                             rol === 'medico' ? 'bg-blue-500/20 text-blue-400' :
                             rol === 'tens' ? 'bg-green-500/20 text-green-400' :
-                            rol === 'paramedico' ? 'bg-orange-500/20 text-orange-400' :
-                            'bg-purple-500/20 text-purple-400'
+                            'bg-orange-500/20 text-orange-400'
                           }`}>
-                            {rol === 'medico' ? 'M' : rol === 'tens' ? 'T' : rol === 'paramedico' ? 'P' : 'A'}
+                            {rol === 'medico' ? 'M' : rol === 'tens' ? 'T' : 'P'}
                           </div>
                           <div>
                             <p className="font-medium text-white">{
                               rol === 'paramedico' ? 'Paramédicos' :
                               rol === 'tens' ? 'TENS' :
-                              rol === 'medico' ? 'Médicos' :
-                              'Administradores'
+                              'Médicos'
                             }</p>
-                            <p className="text-xs text-slate-400">Personal activo</p>
+                            <p className="text-xs text-slate-400">En turno hoy</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-2xl font-bold text-white">{cantidad}</p>
+                          <p className="text-2xl font-bold text-white">{estadisticas?.personal_turno_por_rol?.[rol] || 0}</p>
+                          <p className="text-xs text-slate-400">de {estadisticas?.usuarios_por_rol?.[rol] || 0} totales</p>
                         </div>
                       </div>
                     ))}
@@ -1230,109 +1288,6 @@ export default function AdministradorDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
-
-          {/* Tab: Configuración */}
-          <TabsContent value="config" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuración del Sistema</CardTitle>
-                <CardDescription>Ajustes generales y parámetros del hospital</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Configuración de Capacidad */}
-                <div className="border border-slate-700 rounded-lg p-4 bg-slate-800/30">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Hospital className="w-5 h-5 text-blue-400" />
-                    Capacidad del Hospital
-                  </h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <label className="text-sm text-slate-300 font-medium block mb-2">Camas Totales</label>
-                      <Input 
-                        type="number" 
-                        value={camasTotales}
-                        onChange={(e) => setCamasTotales(Number(e.target.value))}
-                        className="bg-slate-900 text-white border-slate-600" 
-                      />
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <label className="text-sm text-slate-300 font-medium block mb-2">Camas UCI</label>
-                      <Input 
-                        type="number" 
-                        value={camasUCI}
-                        onChange={(e) => setCamasUCI(Number(e.target.value))}
-                        className="bg-slate-900 text-white border-slate-600" 
-                      />
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <label className="text-sm text-slate-300 font-medium block mb-2">Salas de Emergencia</label>
-                      <Input 
-                        type="number" 
-                        value={salasEmergencia}
-                        onChange={(e) => setSalasEmergencia(Number(e.target.value))}
-                        className="bg-slate-900 text-white border-slate-600" 
-                      />
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <label className="text-sm text-slate-300 font-medium block mb-2">Boxes de Atención</label>
-                      <Input 
-                        type="number" 
-                        value={boxesAtencion}
-                        onChange={(e) => setBoxesAtencion(Number(e.target.value))}
-                        className="bg-slate-900 text-white border-slate-600" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Configuración de Auditoría */}
-                <div className="border border-slate-700 rounded-lg p-4 bg-slate-800/30">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-green-400" />
-                    Auditoría y Logs
-                  </h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-white">Registro de auditoría</p>
-                        <p className="text-sm text-slate-400">Guardar todas las acciones del sistema</p>
-                      </div>
-                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Activado</Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-white">Retención de logs</p>
-                        <p className="text-sm text-slate-400">Mantener registros por 90 días</p>
-                      </div>
-                      <Select defaultValue="90">
-                        <SelectTrigger className="w-32 bg-slate-800 border-slate-600">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-slate-800 border-slate-700">
-                          <SelectItem value="30" className="text-white">30 días</SelectItem>
-                          <SelectItem value="60" className="text-white">60 días</SelectItem>
-                          <SelectItem value="90" className="text-white">90 días</SelectItem>
-                          <SelectItem value="180" className="text-white">180 días</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Botones de Acción */}
-                <div className="flex gap-3 pt-4">
-                  <Button onClick={handleGuardarConfiguracion} className="flex-1 bg-blue-600 hover:bg-blue-700">
-                    <Save className="w-4 h-4 mr-2" />
-                    Guardar Cambios
-                  </Button>
-                  <Button variant="outline" onClick={handleRestaurarConfiguracion} className="flex-1 border-slate-600 hover:bg-slate-800">
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Restaurar Valores
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </main>
 
@@ -1478,47 +1433,40 @@ export default function AdministradorDashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bed className="w-5 h-5 text-blue-400" />
-              Agregar Nueva Cama
+              Agregar Camas
             </DialogTitle>
             <DialogDescription>
-              Ingresa los datos de la nueva cama para el hospital
+              Crea múltiples camas del tipo seleccionado
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="numero_cama">Número de Cama *</Label>
-              <Input
-                id="numero_cama"
-                value={nuevaCama.numero}
-                onChange={(e) => setNuevaCama({ ...nuevaCama, numero: e.target.value })}
-                placeholder="Ej: CAMA-001"
-                className="bg-slate-800 border-slate-600"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tipo_cama">Tipo *</Label>
+              <Label htmlFor="tipo_cama">Tipo de Cama *</Label>
               <Select value={nuevaCama.tipo} onValueChange={(value) => setNuevaCama({ ...nuevaCama, tipo: value })}>
                 <SelectTrigger className="bg-slate-800 border-slate-600">
                   <SelectValue placeholder="Seleccionar tipo" />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-800 border-slate-700">
-                  <SelectItem value="general" className="text-white">General</SelectItem>
+                  <SelectItem value="box" className="text-white">Box</SelectItem>
                   <SelectItem value="uci" className="text-white">UCI</SelectItem>
-                  <SelectItem value="box" className="text-white">Box de Atención</SelectItem>
-                  <SelectItem value="aislamiento" className="text-white">Aislamiento</SelectItem>
+                  <SelectItem value="uti" className="text-white">UTI</SelectItem>
+                  <SelectItem value="cama_general" className="text-white">Cama General</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="piso_cama">Piso</Label>
+              <Label htmlFor="cantidad_camas">Cantidad *</Label>
               <Input
-                id="piso_cama"
+                id="cantidad_camas"
                 type="number"
-                value={nuevaCama.piso}
-                onChange={(e) => setNuevaCama({ ...nuevaCama, piso: Number(e.target.value) })}
+                min={1}
+                max={50}
+                value={nuevaCama.cantidad}
+                onChange={(e) => setNuevaCama({ ...nuevaCama, cantidad: parseInt(e.target.value) || 1 })}
                 placeholder="1"
                 className="bg-slate-800 border-slate-600"
               />
+              <p className="text-xs text-slate-400">Ingrese un número entre 1 y 50</p>
             </div>
           </div>
           <div className="flex justify-end gap-2">
@@ -1527,7 +1475,93 @@ export default function AdministradorDashboard() {
             </Button>
             <Button onClick={handleCrearCama} className="bg-green-600 hover:bg-green-700">
               <Plus className="w-4 h-4 mr-1" />
-              Crear Cama
+              Crear {nuevaCama.cantidad} Cama{nuevaCama.cantidad > 1 ? 's' : ''}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Gestionar Camas por Tipo */}
+      <Dialog open={modalGestionarCamas} onOpenChange={setModalGestionarCamas}>
+        <DialogContent className="max-w-lg" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-blue-400" />
+              Gestionar Camas por Tipo
+            </DialogTitle>
+            <DialogDescription>
+              Administra las camas agrupadas por tipo
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {tiposDisponibles.length === 0 ? (
+              <p className="text-center text-slate-400 py-4">No hay camas registradas</p>
+            ) : (
+              <div className="space-y-3">
+                {tiposDisponibles.map((tipo: any) => (
+                  <div key={tipo.tipo} className="flex items-center justify-between p-3 bg-slate-800 rounded-lg border border-slate-700">
+                    <div className="flex items-center gap-3">
+                      <Bed className="w-5 h-5 text-blue-400" />
+                      <div>
+                        <p className="font-medium">{tipo.tipo.toUpperCase()}</p>
+                        <p className="text-sm text-slate-400">
+                          Total: {tipo.total} | Disponibles: {tipo.disponibles} | Ocupadas: {tipo.ocupadas}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {tipo.ocupadas > 0 ? (
+                        <Badge variant="outline" className="border-yellow-500 text-yellow-400">
+                          En uso
+                        </Badge>
+                      ) : (
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={() => handleEliminarTipoCamas(tipo.tipo)}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Eliminar todas
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <div className="border-t border-slate-700 pt-4 mt-4">
+              <p className="text-sm text-slate-400 mb-3">Agregar nuevas camas:</p>
+              <div className="flex gap-2">
+                <Select value={nuevaCama.tipo} onValueChange={(value) => setNuevaCama({ ...nuevaCama, tipo: value })}>
+                  <SelectTrigger className="bg-slate-800 border-slate-600 flex-1">
+                    <SelectValue placeholder="Tipo" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    <SelectItem value="box" className="text-white">Box</SelectItem>
+                    <SelectItem value="uci" className="text-white">UCI</SelectItem>
+                    <SelectItem value="uti" className="text-white">UTI</SelectItem>
+                    <SelectItem value="cama_general" className="text-white">Cama General</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={nuevaCama.cantidad}
+                  onChange={(e) => setNuevaCama({ ...nuevaCama, cantidad: parseInt(e.target.value) || 1 })}
+                  className="w-20 bg-slate-800 border-slate-600"
+                  placeholder="Cant."
+                />
+                <Button onClick={handleCrearCama} className="bg-green-600 hover:bg-green-700">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setModalGestionarCamas(false)} className="border-slate-600">
+              Cerrar
             </Button>
           </div>
         </DialogContent>

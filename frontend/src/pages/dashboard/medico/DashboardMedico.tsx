@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI, solicitudesExamenesAPI, documentosAPI, camasAPI, notificacionesAPI } from "@/lib/api"
+import { authAPI, fichasAPI, solicitudesMedicamentosAPI, diagnosticosAPI, solicitudesExamenesAPI, documentosAPI, camasAPI, notasEvolucionAPI, NotaEvolucion, NotaEvolucionCreate, turnosAPI, pacientesAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,11 +15,15 @@ import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatPanel } from "@/components/chat-panel"
 import { SignosVitalesChart } from "@/components/signos-vitales-chart"
+import { NotificationsPanel } from "@/components/notifications-panel"
+import { ModalTurno } from "@/components/modal-turno"
+import { useTurno } from "@/hooks/use-turno"
 import { toast } from "@/hooks/use-toast"
 import {
-  Bell,
   Activity,
   Heart,
   Thermometer,
@@ -50,7 +54,13 @@ import {
   FlaskConical,
   Download,
   FileCheck,
-  BedDouble
+  BedDouble,
+  MoreVertical,
+  Eye,
+  Edit,
+  FileDown,
+  Plus,
+  History
 } from "lucide-react"
 
 // Componente de Signo Vital Individual
@@ -118,6 +128,33 @@ function evaluarSignoVital(tipo: string, valor: number): "normal" | "warning" | 
   return "critical"
 }
 
+// Función para calcular tiempo de espera
+function calcularTiempoEspera(fechaLlegada: string | Date): { texto: string, minutos: number, urgente: boolean } {
+  if (!fechaLlegada) return { texto: "N/A", minutos: 0, urgente: false }
+  
+  const llegada = new Date(fechaLlegada)
+  const ahora = new Date()
+  const diffMs = ahora.getTime() - llegada.getTime()
+  const diffMinutos = Math.floor(diffMs / (1000 * 60))
+  
+  if (diffMinutos < 0) return { texto: "Recién llegado", minutos: 0, urgente: false }
+  
+  const horas = Math.floor(diffMinutos / 60)
+  const minutos = diffMinutos % 60
+  
+  let texto = ""
+  if (horas > 0) {
+    texto = `${horas}h ${minutos}m`
+  } else {
+    texto = `${minutos}m`
+  }
+  
+  // Consideramos urgente si lleva más de 2 horas esperando
+  const urgente = diffMinutos > 120
+  
+  return { texto, minutos: diffMinutos, urgente }
+}
+
 export default function MedicoDashboard() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -141,11 +178,6 @@ export default function MedicoDashboard() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [motivoRechazo, setMotivoRechazo] = useState<{ [key: number]: string }>({})
-  
-  // Estado para notificaciones
-  const [notificaciones, setNotificaciones] = useState<any[]>([])
-  const [mostrarNotificaciones, setMostrarNotificaciones] = useState(false)
-  const notificacionesPollingRef = useRef<NodeJS.Timeout | null>(null)
   
   // Estado para chat pantalla completa
   const [fichaParaChat, setFichaParaChat] = useState<number | null>(null)
@@ -185,20 +217,39 @@ export default function MedicoDashboard() {
   const [fichaParaPrioridad, setFichaParaPrioridad] = useState<any>(null)
   const [nuevaPrioridad, setNuevaPrioridad] = useState("")
 
-  // Cargar notificaciones
-  const cargarNotificaciones = useCallback(async () => {
-    try {
-      const data = await notificacionesAPI.noLeidas()
-      setNotificaciones(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error('Error al cargar notificaciones:', err)
-    }
-  }, [])
+  // Estados para notas de evolución
+  const [modalEvolucionOpen, setModalEvolucionOpen] = useState(false)
+  const [fichaParaEvolucion, setFichaParaEvolucion] = useState<any>(null)
+  const [notasEvolucion, setNotasEvolucion] = useState<NotaEvolucion[]>([])
+  const [cargandoNotas, setCargandoNotas] = useState(false)
+  const [guardandoNota, setGuardandoNota] = useState(false)
+  const [nuevaNota, setNuevaNota] = useState<Partial<NotaEvolucionCreate>>({
+    tipo: 'evolucion',
+    subjetivo: '',
+    objetivo: '',
+    analisis: '',
+    plan: '',
+    indicaciones_actualizadas: '',
+    medicamentos_actualizados: '',
+  })
+
+  // Estados para historial del paciente
+  const [modalHistorialOpen, setModalHistorialOpen] = useState(false)
+  const [historialPaciente, setHistorialPaciente] = useState<any>(null)
+  const [cargandoHistorial, setCargandoHistorial] = useState(false)
+
+  // Hook de control de turno
+  const { 
+    turnoInfo, 
+    mostrarModal: mostrarModalTurno, 
+    enTurno, 
+    cerrarModal: cerrarModalTurno 
+  } = useTurno('medico')
 
   useEffect(() => {
     const currentUser = getSession()
     if (!currentUser || currentUser.rol !== "medico") {
-      navigate("/")
+      navigate("/", { replace: true })
       return
     }
     setUser(currentUser)
@@ -210,21 +261,14 @@ export default function MedicoDashboard() {
     }
     
     cargarDatos()
-    cargarNotificaciones()
     
     // Auto-refresh cada 60 segundos
     const interval = setInterval(cargarDatos, 60000)
     
-    // Polling de notificaciones cada 10 segundos
-    notificacionesPollingRef.current = setInterval(cargarNotificaciones, 10000)
-    
     return () => {
       clearInterval(interval)
-      if (notificacionesPollingRef.current) {
-        clearInterval(notificacionesPollingRef.current)
-      }
     }
-  }, [navigate, cargarNotificaciones])
+  }, [navigate])
 
   const cargarDatos = async () => {
     try {
@@ -286,8 +330,38 @@ export default function MedicoDashboard() {
           estado: se.estado,
           fechaSolicitud: se.fecha_solicitud
         })),
-        medico_asignado: ficha.medico_asignado_nombre
+        medico_asignado: ficha.medico_asignado_nombre,
+        triage: ficha.triage,
+        fechaRegistro: ficha.fecha_registro,
+        fecha_llegada_hospital: ficha.fecha_llegada_hospital || ficha.fecha_registro
       }))
+      
+      // Ordenar fichas por prioridad (ESI del triage primero, si no, pre-triage)
+      // ESI 1 = más urgente, ESI 5 = menos urgente
+      // C1 = más urgente, C5 = menos urgente
+      const ordenPrioridad = (ficha: any) => {
+        // Si tiene triage, usar nivel ESI
+        if (ficha.triage?.nivel_esi) {
+          return ficha.triage.nivel_esi
+        }
+        // Si no, usar pre-triage del paramédico
+        const mapPrioridad: Record<string, number> = {
+          'C1': 1, 'C2': 2, 'C3': 3, 'C4': 4, 'C5': 5
+        }
+        return mapPrioridad[ficha.prioridad] || 6
+      }
+      
+      fichasTransformadas.sort((a, b) => {
+        const prioridadA = ordenPrioridad(a)
+        const prioridadB = ordenPrioridad(b)
+        // Si tienen la misma prioridad, el que lleva más tiempo esperando primero
+        if (prioridadA === prioridadB) {
+          const fechaA = new Date(a.fecha_llegada_hospital || a.fechaRegistro).getTime()
+          const fechaB = new Date(b.fecha_llegada_hospital || b.fechaRegistro).getTime()
+          return fechaA - fechaB // El más antiguo primero
+        }
+        return prioridadA - prioridadB
+      })
       
       setFichasActivas(fichasTransformadas)
       
@@ -460,6 +534,21 @@ export default function MedicoDashboard() {
     }
   }
 
+  // Función para cargar historial del paciente
+  const cargarHistorialPaciente = async (pacienteId: number) => {
+    try {
+      setCargandoHistorial(true)
+      const historial = await pacientesAPI.historial(pacienteId)
+      setHistorialPaciente(historial)
+      setModalHistorialOpen(true)
+    } catch (err: any) {
+      console.error('Error al cargar historial:', err)
+      toast({ title: "Error", description: "No se pudo cargar el historial del paciente", variant: "destructive" })
+    } finally {
+      setCargandoHistorial(false)
+    }
+  }
+
   const abrirModalCamas = async (ficha: any, tipoCama?: "general" | "uci") => {
     setFichaParaCama(ficha)
     if (tipoCama) {
@@ -596,9 +685,17 @@ export default function MedicoDashboard() {
       setLoading(true)
       setError("")
       
-      if (!diagnosticoForm.codigoCIE10 || !diagnosticoForm.diagnostico || !diagnosticoForm.indicaciones || !diagnosticoForm.tipoAlta) {
-        setError("Por favor complete todos los campos obligatorios")
-        return
+      // Validación diferente para fallecido (no requiere indicaciones ni medicamentos)
+      if (diagnosticoForm.tipoAlta === 'fallecido') {
+        if (!diagnosticoForm.codigoCIE10 || !diagnosticoForm.diagnostico) {
+          setError("Por favor complete el código CIE-10 y la causa de muerte")
+          return
+        }
+      } else {
+        if (!diagnosticoForm.codigoCIE10 || !diagnosticoForm.diagnostico || !diagnosticoForm.indicaciones || !diagnosticoForm.tipoAlta) {
+          setError("Por favor complete todos los campos obligatorios")
+          return
+        }
       }
       
       // Validar destino si es derivación
@@ -627,7 +724,26 @@ export default function MedicoDashboard() {
         data.hora_fallecimiento = new Date().toISOString()
       }
       
-      const response = await diagnosticosAPI.crear(data)
+      // Verificar primero si ya existe un diagnóstico para esta ficha
+      let diagnosticoExistente = null
+      try {
+        const diagnosticos = await diagnosticosAPI.porFicha(fichaSeleccionada.id)
+        if (diagnosticos && diagnosticos.length > 0) {
+          diagnosticoExistente = diagnosticos[0]
+        }
+      } catch (e) {
+        // No hay diagnóstico existente, está bien
+      }
+      
+      let response
+      if (diagnosticoExistente) {
+        // Ya existe, actualizar (sin incluir ficha en el PATCH)
+        const { ficha, ...dataWithoutFicha } = data
+        response = await diagnosticosAPI.actualizar(diagnosticoExistente.id, dataWithoutFicha)
+      } else {
+        // No existe, crear
+        response = await diagnosticosAPI.crear(data)
+      }
       
       // Determinar mensaje y acción según tipo de alta
       const mensajesPorTipo: Record<string, { titulo: string, descripcion: string, tab: string }> = {
@@ -787,6 +903,96 @@ export default function MedicoDashboard() {
     }
   }
 
+  // ====== NOTAS DE EVOLUCIÓN ======
+  const handleAbrirEvolucion = async (ficha: any) => {
+    setFichaParaEvolucion(ficha)
+    setModalEvolucionOpen(true)
+    setCargandoNotas(true)
+    setNuevaNota({
+      tipo: 'evolucion',
+      subjetivo: '',
+      objetivo: '',
+      analisis: '',
+      plan: '',
+      indicaciones_actualizadas: '',
+      medicamentos_actualizados: '',
+    })
+    
+    try {
+      const notas = await notasEvolucionAPI.obtenerPorFicha(ficha.id)
+      setNotasEvolucion(notas)
+    } catch (err) {
+      console.error('Error al cargar notas:', err)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las notas de evolución",
+        variant: "destructive",
+        duration: 2000
+      })
+    } finally {
+      setCargandoNotas(false)
+    }
+  }
+
+  const handleGuardarNota = async () => {
+    if (!fichaParaEvolucion) return
+    
+    // Validar que al menos hay algo
+    const tieneContenido = nuevaNota.subjetivo || nuevaNota.objetivo || nuevaNota.analisis || 
+                          nuevaNota.plan || nuevaNota.indicaciones_actualizadas || nuevaNota.medicamentos_actualizados
+    
+    if (!tieneContenido) {
+      toast({
+        title: "Error",
+        description: "Debe completar al menos un campo",
+        variant: "destructive",
+        duration: 2000
+      })
+      return
+    }
+    
+    setGuardandoNota(true)
+    try {
+      const notaCreada = await notasEvolucionAPI.crear({
+        ficha_id: fichaParaEvolucion.id,
+        tipo: nuevaNota.tipo || 'evolucion',
+        subjetivo: nuevaNota.subjetivo || '',
+        objetivo: nuevaNota.objetivo || '',
+        analisis: nuevaNota.analisis || '',
+        plan: nuevaNota.plan || '',
+        indicaciones_actualizadas: nuevaNota.indicaciones_actualizadas || '',
+        medicamentos_actualizados: nuevaNota.medicamentos_actualizados || '',
+      })
+      
+      setNotasEvolucion(prev => [notaCreada, ...prev])
+      setNuevaNota({
+        tipo: 'evolucion',
+        subjetivo: '',
+        objetivo: '',
+        analisis: '',
+        plan: '',
+        indicaciones_actualizadas: '',
+        medicamentos_actualizados: '',
+      })
+      
+      toast({
+        title: "✅ Nota guardada",
+        description: "La nota de evolución se ha registrado correctamente",
+        duration: 2000
+      })
+    } catch (err: any) {
+      console.error('Error al guardar nota:', err)
+      toast({
+        title: "Error",
+        description: err.message || "No se pudo guardar la nota",
+        variant: "destructive",
+        duration: 2000
+      })
+    } finally {
+      setGuardandoNota(false)
+    }
+  }
+
   const handleCerrarSesion = async () => {
     try {
       await authAPI.logout()
@@ -794,7 +1000,7 @@ export default function MedicoDashboard() {
       console.error('Error al cerrar sesión:', error)
     } finally {
       localStorage.removeItem("medical_system_user")
-      navigate("/")
+      navigate("/", { replace: true })
     }
   }
 
@@ -802,6 +1008,26 @@ export default function MedicoDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* Modal de verificación de turno */}
+      <ModalTurno
+        open={mostrarModalTurno}
+        turnoInfo={turnoInfo}
+        onTurnoIniciado={cerrarModalTurno}
+        onSalir={() => {
+          cerrarModalTurno()
+          navigate('/')
+        }}
+      />
+
+      {/* Indicador de turno */}
+      {enTurno && turnoInfo?.turno_actual && (
+        <div className="fixed bottom-4 left-4 z-40 bg-emerald-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 shadow-lg">
+          <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          En turno: {turnoInfo.turno_actual.tipo_turno_display}
+          {turnoInfo.turno_actual.es_voluntario && ' (Voluntario)'}
+        </div>
+      )}
+
       {/* Header Moderno */}
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3">
@@ -841,104 +1067,30 @@ export default function MedicoDashboard() {
                 </div>
               </div>
 
-              {/* Botón de notificaciones */}
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative text-slate-400 hover:text-white hover:bg-slate-800"
-                  onClick={() => setMostrarNotificaciones(!mostrarNotificaciones)}
-                >
-                  <Bell className="w-5 h-5" />
-                  {notificaciones.length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[10px] font-bold flex items-center justify-center text-white">
-                      {notificaciones.length > 9 ? "9+" : notificaciones.length}
-                    </span>
-                  )}
-                </Button>
-                
-                {/* Panel de notificaciones */}
-                {mostrarNotificaciones && (
-                  <div className="absolute right-0 top-12 w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50">
-                    <div className="p-3 border-b border-slate-800 flex items-center justify-between">
-                      <h3 className="font-semibold text-white text-sm">Notificaciones</h3>
-                      <Badge variant="secondary" className="text-xs">{notificaciones.length}</Badge>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                      {notificaciones.length === 0 ? (
-                        <div className="p-8 text-center">
-                          <Bell className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                          <p className="text-sm text-slate-500">Sin notificaciones nuevas</p>
-                        </div>
-                      ) : (
-                        <>
-                          {notificaciones.map((notif) => (
-                            <div 
-                              key={notif.id} 
-                              className="p-4 border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer transition-colors group"
-                              onClick={async () => {
-                                try {
-                                  await notificacionesAPI.marcarLeida(notif.id)
-                                  cargarNotificaciones()
-                                } catch (err) {
-                                  console.error('Error al marcar notificación:', err)
-                                }
-                              }}
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${
-                                  notif.prioridad === 'alta' || notif.prioridad === 'urgente' ? 'bg-red-500' :
-                                  notif.prioridad === 'media' ? 'bg-amber-500' : 'bg-blue-500'
-                                }`} />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-white">{notif.titulo}</p>
-                                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">{notif.mensaje}</p>
-                                  <div className="flex items-center gap-2 mt-2">
-                                    <Clock className="w-3 h-3 text-slate-500" />
-                                    <span className="text-[10px] text-slate-500">
-                                      {notif.tiempo_transcurrido || new Date(notif.fecha_creacion).toLocaleString('es-CL')}
-                                    </span>
-                                  </div>
-                                </div>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    notificacionesAPI.marcarLeida(notif.id).then(() => cargarNotificaciones())
-                                  }}
-                                >
-                                  <X className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                          <div className="p-3 bg-slate-800/30 border-t border-slate-700">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="w-full text-xs text-slate-400 hover:text-white"
-                              onClick={async () => {
-                                try {
-                                  await notificacionesAPI.marcarTodasLeidas()
-                                  cargarNotificaciones()
-                                  toast({ title: "✅ Notificaciones marcadas como leídas" })
-                                } catch (err) {
-                                  console.error('Error:', err)
-                                }
-                              }}
-                            >
-                              <CheckCircle className="w-3 h-3 mr-2" />
-                              Marcar todas como leídas
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Panel de Notificaciones */}
+              <NotificationsPanel 
+                onNavigateToFicha={(fichaId) => {
+                  const ficha = fichasActivas.find(f => f.id === fichaId) || 
+                                fichasHospitalizados.find(f => f.id === fichaId) ||
+                                fichasUCI.find(f => f.id === fichaId)
+                  if (ficha) {
+                    setFichaExpandida(fichaExpandida === fichaId ? null : fichaId)
+                  }
+                }}
+                onOpenChat={(fichaId) => {
+                  // Abrir chat de la ficha
+                  setFichaParaChat(fichaId)
+                }}
+                onViewSignos={(fichaId) => {
+                  // Expandir ficha para ver signos vitales
+                  setFichaExpandida(fichaId)
+                  // Cambiar a la pestaña de hospitalizados/UCI si la ficha está ahí
+                  const enHospital = fichasHospitalizados.find(f => f.id === fichaId)
+                  const enUCI = fichasUCI.find(f => f.id === fichaId)
+                  if (enHospital) setActiveTab('hospitalizados')
+                  else if (enUCI) setActiveTab('uci')
+                }}
+              />
 
               <Button
                 variant="ghost"
@@ -1122,6 +1274,7 @@ export default function MedicoDashboard() {
                   {fichasActivas.map((ficha) => {
                     const isExpanded = fichaExpandida === ficha.id
                     const ultimosSignos = ficha.signosVitales?.[ficha.signosVitales.length - 1]
+                    const tiempoEspera = calcularTiempoEspera(ficha.fecha_llegada_hospital || ficha.fechaRegistro)
                     
                     return (
                       <Card 
@@ -1147,6 +1300,17 @@ export default function MedicoDashboard() {
                                 {!ficha.paciente.esNN && (
                                   <span className="text-xs text-slate-500">RUT: {ficha.paciente.rut}</span>
                                 )}
+                                {/* Tiempo de espera */}
+                                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  tiempoEspera.urgente 
+                                    ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' 
+                                    : tiempoEspera.minutos > 60 
+                                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                      : 'bg-slate-700/50 text-slate-300 border border-slate-600/30'
+                                }`}>
+                                  <Clock className="w-3 h-3" />
+                                  <span>Espera: {tiempoEspera.texto}</span>
+                                </div>
                               </div>
                               <p className="text-sm text-slate-300 mt-0.5 line-clamp-1">{ficha.motivoConsulta}</p>
                             </div>
@@ -1841,36 +2005,51 @@ export default function MedicoDashboard() {
                           <span className="text-red-500">*</span>
                         </Label>
                         <Textarea
-                          placeholder="Ej: Infarto agudo del miocardio, síndrome coronario agudo..."
+                          placeholder={diagnosticoForm.tipoAlta === 'fallecido' ? "Causa de muerte..." : "Ej: Infarto agudo del miocardio, síndrome coronario agudo..."}
                           value={diagnosticoForm.diagnostico}
                           onChange={(e) => setDiagnosticoForm({...diagnosticoForm, diagnostico: e.target.value})}
                           className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <Label className="text-slate-300 flex items-center gap-2">
-                          <span>Indicaciones Médicas</span>
-                          <span className="text-red-500">*</span>
-                        </Label>
-                        <Textarea
-                          placeholder="Indicaciones y tratamiento detallado..."
-                          value={diagnosticoForm.indicaciones}
-                          onChange={(e) => setDiagnosticoForm({...diagnosticoForm, indicaciones: e.target.value})}
-                          className="bg-slate-800 border-slate-700 text-white min-h-[120px]"
-                        />
-                      </div>
+                      {/* Solo mostrar indicaciones y medicamentos si NO es fallecido */}
+                      {diagnosticoForm.tipoAlta !== 'fallecido' && (
+                        <>
+                          <div className="space-y-2">
+                            <Label className="text-slate-300 flex items-center gap-2">
+                              <span>Indicaciones Médicas</span>
+                              <span className="text-red-500">*</span>
+                            </Label>
+                            <Textarea
+                              placeholder="Indicaciones y tratamiento detallado..."
+                              value={diagnosticoForm.indicaciones}
+                              onChange={(e) => setDiagnosticoForm({...diagnosticoForm, indicaciones: e.target.value})}
+                              className="bg-slate-800 border-slate-700 text-white min-h-[120px]"
+                            />
+                          </div>
 
-                      <div className="space-y-2">
-                        <Label className="text-slate-300">Medicamentos Prescritos (opcional)</Label>
-                        <p className="text-xs text-slate-500">Estos datos aparecerán en la Receta Médica al descargarla</p>
-                        <Textarea
-                          placeholder="Aspirina 100mg cada 24 horas&#10;Enalapril 10mg cada 12 horas&#10;Omeprazol 20mg cada 24 horas..."
-                          value={diagnosticoForm.medicamentos}
-                          onChange={(e) => setDiagnosticoForm({...diagnosticoForm, medicamentos: e.target.value})}
-                          className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
-                        />
-                      </div>
+                          <div className="space-y-2">
+                            <Label className="text-slate-300">Medicamentos Prescritos (opcional)</Label>
+                            <p className="text-xs text-slate-500">Estos datos aparecerán en la Receta Médica al descargarla</p>
+                            <Textarea
+                              placeholder="Aspirina 100mg cada 24 horas&#10;Enalapril 10mg cada 12 horas&#10;Omeprazol 20mg cada 24 horas..."
+                              value={diagnosticoForm.medicamentos}
+                              onChange={(e) => setDiagnosticoForm({...diagnosticoForm, medicamentos: e.target.value})}
+                              className="bg-slate-800 border-slate-700 text-white min-h-[100px]"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* Mensaje informativo para deceso */}
+                      {diagnosticoForm.tipoAlta === 'fallecido' && (
+                        <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg">
+                          <p className="text-sm text-slate-400">
+                            <strong className="text-slate-300">Registro de deceso:</strong> Se registrará la hora actual como hora de fallecimiento.
+                            No se requieren indicaciones médicas ni medicamentos.
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex gap-3 pt-4">
                         <Button 
@@ -2012,6 +2191,15 @@ export default function MedicoDashboard() {
                           
                           {/* Acciones */}
                           <div className="flex items-center gap-2 ml-4">
+                            <Button
+                              variant="outline"
+                              className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10"
+                              onClick={() => cargarHistorialPaciente(ficha.paciente?.id)}
+                              disabled={!ficha.paciente?.id || cargandoHistorial}
+                            >
+                              <History className="w-4 h-4 mr-2" />
+                              Historial
+                            </Button>
                             <CollapsibleTrigger asChild>
                               <Button
                                 variant="outline"
@@ -2233,6 +2421,29 @@ export default function MedicoDashboard() {
                           
                           {/* Acciones */}
                           <div className="flex items-center gap-2 ml-4">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white">
+                                  <MoreVertical className="w-5 h-5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent className="bg-slate-800 border-slate-700">
+                                <DropdownMenuItem 
+                                  className="text-white hover:bg-slate-700 cursor-pointer"
+                                  onClick={() => handleVerFichaAtendida(ficha)}
+                                >
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  Ver Ficha
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-white hover:bg-slate-700 cursor-pointer"
+                                  onClick={() => handleAbrirDiagnostico(ficha)}
+                                >
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <CollapsibleTrigger asChild>
                               <Button
                                 variant="outline"
@@ -2418,15 +2629,45 @@ export default function MedicoDashboard() {
                             )}
                           </div>
                         </div>
-                        {!ficha.cama_asignada && (
+                        <div className="flex flex-col gap-2">
                           <Button 
-                            className="bg-indigo-600 hover:bg-indigo-700"
-                            onClick={() => abrirModalCamas(ficha, 'general')}
+                            variant="outline"
+                            size="sm"
+                            className="border-indigo-500/50 text-indigo-400 hover:bg-indigo-500/20"
+                            onClick={() => handleVerFichaAtendida(ficha)}
                           >
-                            <Bed className="w-4 h-4 mr-2" />
-                            Asignar Cama
+                            <FileText className="w-4 h-4 mr-2" />
+                            Ver Ficha
                           </Button>
-                        )}
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+                            onClick={() => handleAbrirEvolucion(ficha)}
+                          >
+                            <History className="w-4 h-4 mr-2" />
+                            Evolución
+                          </Button>
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                            onClick={() => setFichaParaChat(ficha.id)}
+                          >
+                            <MessageCircle className="w-4 h-4 mr-2" />
+                            Chat
+                          </Button>
+                          {!ficha.cama_asignada && (
+                            <Button 
+                              size="sm"
+                              className="bg-indigo-600 hover:bg-indigo-700"
+                              onClick={() => abrirModalCamas(ficha, 'general')}
+                            >
+                              <Bed className="w-4 h-4 mr-2" />
+                              Asignar Cama
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -2503,15 +2744,45 @@ export default function MedicoDashboard() {
                             )}
                           </div>
                         </div>
-                        {!ficha.cama_asignada && (
+                        <div className="flex flex-col gap-2">
                           <Button 
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => abrirModalCamas(ficha, 'uci')}
+                            variant="outline"
+                            size="sm"
+                            className="border-red-500/50 text-red-400 hover:bg-red-500/20"
+                            onClick={() => handleVerFichaAtendida(ficha)}
                           >
-                            <Bed className="w-4 h-4 mr-2" />
-                            Asignar Cama UCI
+                            <FileText className="w-4 h-4 mr-2" />
+                            Ver Ficha
                           </Button>
-                        )}
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+                            onClick={() => handleAbrirEvolucion(ficha)}
+                          >
+                            <History className="w-4 h-4 mr-2" />
+                            Evolución
+                          </Button>
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                            onClick={() => setFichaParaChat(ficha.id)}
+                          >
+                            <MessageCircle className="w-4 h-4 mr-2" />
+                            Chat
+                          </Button>
+                          {!ficha.cama_asignada && (
+                            <Button 
+                              size="sm"
+                              className="bg-red-600 hover:bg-red-700"
+                              onClick={() => abrirModalCamas(ficha, 'uci')}
+                            >
+                              <Bed className="w-4 h-4 mr-2" />
+                              Asignar Cama UCI
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -2596,6 +2867,26 @@ export default function MedicoDashboard() {
                             )}
                           </div>
                         </div>
+                        <div className="flex flex-col gap-2">
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
+                            onClick={() => handleVerFichaAtendida(ficha)}
+                          >
+                            <FileText className="w-4 h-4 mr-2" />
+                            Ver Ficha
+                          </Button>
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                            onClick={() => setFichaParaChat(ficha.id)}
+                          >
+                            <MessageCircle className="w-4 h-4 mr-2" />
+                            Chat
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -2668,6 +2959,46 @@ export default function MedicoDashboard() {
                               <p className="text-xs text-slate-400 font-medium">Diagnóstico: {ficha.diagnostico.diagnostico_cie10}</p>
                             </div>
                           )}
+                        </div>
+                        {/* Acciones */}
+                        <div className="flex items-center gap-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white">
+                                <MoreVertical className="w-5 h-5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-slate-800 border-slate-700">
+                              <DropdownMenuItem 
+                                className="text-white hover:bg-slate-700 cursor-pointer"
+                                onClick={() => handleVerFichaAtendida(ficha)}
+                              >
+                                <Eye className="w-4 h-4 mr-2" />
+                                Ver Ficha
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-white hover:bg-slate-700 cursor-pointer"
+                                onClick={() => handleAbrirDiagnostico(ficha)}
+                              >
+                                <Edit className="w-4 h-4 mr-2" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-white hover:bg-slate-700 cursor-pointer"
+                                onClick={async () => {
+                                  try {
+                                    await documentosAPI.descargarFichaPDF(ficha.id)
+                                    toast({ title: "✅ Documento descargado" })
+                                  } catch {
+                                    toast({ title: "Error", description: "No se pudo descargar", variant: "destructive" })
+                                  }
+                                }}
+                              >
+                                <FileDown className="w-4 h-4 mr-2" />
+                                Documentos
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     </CardContent>
@@ -3081,6 +3412,472 @@ Ejemplo:
                   Guardar Cambio
                 </>
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Notas de Evolución */}
+      <Dialog open={modalEvolucionOpen} onOpenChange={(open) => {
+        setModalEvolucionOpen(open)
+        if (!open) {
+          setFichaParaEvolucion(null)
+          setNotasEvolucion([])
+          setNuevaNota({
+            subjetivo: "",
+            objetivo: "",
+            analisis: "",
+            plan: "",
+            signos_vitales: {},
+            glasgow: undefined,
+            indicaciones_actualizadas: "",
+            medicamentos_actualizados: ""
+          })
+        }
+      }}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <History className="w-5 h-5 text-blue-400" />
+              Notas de Evolución
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {fichaParaEvolucion && (
+                <span>
+                  Paciente: <strong className="text-white">
+                    {fichaParaEvolucion.paciente?.nombres || 'NN'} {fichaParaEvolucion.paciente?.apellidos || fichaParaEvolucion.paciente?.identificador_nn}
+                  </strong>
+                  {" | "}
+                  <span className="text-blue-400">{fichaParaEvolucion.ubicacion_display || fichaParaEvolucion.ubicacion}</span>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 py-4">
+            {/* Columna izquierda: Nueva nota */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-green-400" />
+                Nueva Nota de Evolución
+              </h3>
+              
+              {/* Formato SOAP */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-blue-400">S - Subjetivo</Label>
+                  <Textarea
+                    value={nuevaNota.subjetivo}
+                    onChange={(e) => setNuevaNota({...nuevaNota, subjetivo: e.target.value})}
+                    placeholder="Síntomas, quejas del paciente, cómo se siente..."
+                    className="bg-slate-800 border-slate-700 min-h-[60px] text-sm"
+                  />
+                </div>
+                
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-green-400">O - Objetivo</Label>
+                  <Textarea
+                    value={nuevaNota.objetivo}
+                    onChange={(e) => setNuevaNota({...nuevaNota, objetivo: e.target.value})}
+                    placeholder="Hallazgos del examen físico, signos vitales..."
+                    className="bg-slate-800 border-slate-700 min-h-[60px] text-sm"
+                  />
+                </div>
+
+                {/* Signos Vitales */}
+                <div className="space-y-2 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                  <Label className="text-sm font-medium text-slate-300">Signos Vitales</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs text-slate-400">FC (lpm)</Label>
+                      <Input
+                        type="number"
+                        value={nuevaNota.signos_vitales?.fc || ""}
+                        onChange={(e) => setNuevaNota({
+                          ...nuevaNota, 
+                          signos_vitales: {...nuevaNota.signos_vitales, fc: e.target.value ? Number(e.target.value) : undefined}
+                        })}
+                        className="bg-slate-800 border-slate-600 h-8 text-sm"
+                        placeholder="80"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-400">FR (rpm)</Label>
+                      <Input
+                        type="number"
+                        value={nuevaNota.signos_vitales?.fr || ""}
+                        onChange={(e) => setNuevaNota({
+                          ...nuevaNota, 
+                          signos_vitales: {...nuevaNota.signos_vitales, fr: e.target.value ? Number(e.target.value) : undefined}
+                        })}
+                        className="bg-slate-800 border-slate-600 h-8 text-sm"
+                        placeholder="18"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-400">PA (mmHg)</Label>
+                      <Input
+                        value={nuevaNota.signos_vitales?.pa || ""}
+                        onChange={(e) => setNuevaNota({
+                          ...nuevaNota, 
+                          signos_vitales: {...nuevaNota.signos_vitales, pa: e.target.value}
+                        })}
+                        className="bg-slate-800 border-slate-600 h-8 text-sm"
+                        placeholder="120/80"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-400">Temp (°C)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={nuevaNota.signos_vitales?.temp || ""}
+                        onChange={(e) => setNuevaNota({
+                          ...nuevaNota, 
+                          signos_vitales: {...nuevaNota.signos_vitales, temp: e.target.value ? Number(e.target.value) : undefined}
+                        })}
+                        className="bg-slate-800 border-slate-600 h-8 text-sm"
+                        placeholder="36.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-400">SatO2 (%)</Label>
+                      <Input
+                        type="number"
+                        value={nuevaNota.signos_vitales?.sato2 || ""}
+                        onChange={(e) => setNuevaNota({
+                          ...nuevaNota, 
+                          signos_vitales: {...nuevaNota.signos_vitales, sato2: e.target.value ? Number(e.target.value) : undefined}
+                        })}
+                        className="bg-slate-800 border-slate-600 h-8 text-sm"
+                        placeholder="98"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-400">Glasgow</Label>
+                      <Input
+                        type="number"
+                        min="3"
+                        max="15"
+                        value={nuevaNota.glasgow || ""}
+                        onChange={(e) => setNuevaNota({
+                          ...nuevaNota, 
+                          glasgow: e.target.value ? Number(e.target.value) : undefined
+                        })}
+                        className="bg-slate-800 border-slate-600 h-8 text-sm"
+                        placeholder="15"
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-yellow-400">A - Análisis</Label>
+                  <Textarea
+                    value={nuevaNota.analisis}
+                    onChange={(e) => setNuevaNota({...nuevaNota, analisis: e.target.value})}
+                    placeholder="Diagnóstico diferencial, interpretación de hallazgos..."
+                    className="bg-slate-800 border-slate-700 min-h-[60px] text-sm"
+                  />
+                </div>
+                
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-purple-400">P - Plan</Label>
+                  <Textarea
+                    value={nuevaNota.plan}
+                    onChange={(e) => setNuevaNota({...nuevaNota, plan: e.target.value})}
+                    placeholder="Plan de tratamiento, próximos pasos..."
+                    className="bg-slate-800 border-slate-700 min-h-[60px] text-sm"
+                  />
+                </div>
+
+                {/* Indicaciones y Medicamentos Actualizados */}
+                <div className="space-y-2 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium text-cyan-400">Indicaciones Actualizadas</Label>
+                    <Textarea
+                      value={nuevaNota.indicaciones_actualizadas}
+                      onChange={(e) => setNuevaNota({...nuevaNota, indicaciones_actualizadas: e.target.value})}
+                      placeholder="Nuevas indicaciones o modificaciones..."
+                      className="bg-slate-800 border-slate-600 min-h-[50px] text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium text-orange-400">Medicamentos Actualizados</Label>
+                    <Textarea
+                      value={nuevaNota.medicamentos_actualizados}
+                      onChange={(e) => setNuevaNota({...nuevaNota, medicamentos_actualizados: e.target.value})}
+                      placeholder="Cambios en medicación..."
+                      className="bg-slate-800 border-slate-600 min-h-[50px] text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                className="w-full bg-green-600 hover:bg-green-700"
+                onClick={handleGuardarNota}
+                disabled={guardandoNota || (!nuevaNota.subjetivo && !nuevaNota.objetivo && !nuevaNota.analisis && !nuevaNota.plan)}
+              >
+                {guardandoNota ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Agregar Nota
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Columna derecha: Historial de notas */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <History className="w-5 h-5 text-purple-400" />
+                Historial de Evolución ({notasEvolucion.length})
+              </h3>
+
+              {cargandoNotas ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin text-blue-400" />
+                </div>
+              ) : notasEvolucion.length === 0 ? (
+                <div className="text-center py-8 text-slate-400">
+                  <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No hay notas de evolución registradas</p>
+                </div>
+              ) : (
+                <ScrollArea className="h-[500px] pr-4">
+                  <div className="space-y-4">
+                    {notasEvolucion.map((nota, index) => (
+                      <Card key={nota.id} className="bg-slate-800/50 border-slate-700">
+                        <CardContent className="p-4 space-y-3">
+                          {/* Encabezado de la nota */}
+                          <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="bg-blue-500/20 text-blue-300 border-blue-500/50">
+                                #{notasEvolucion.length - index}
+                              </Badge>
+                              <span className="text-xs text-slate-400">
+                                {new Date(nota.fecha_hora).toLocaleString('es-CL')}
+                              </span>
+                            </div>
+                            <span className="text-xs text-slate-500">
+                              {nota.medico?.nombre || 'Médico'}
+                            </span>
+                          </div>
+
+                          {/* Contenido SOAP */}
+                          <div className="space-y-2 text-sm">
+                            {nota.subjetivo && (
+                              <div>
+                                <span className="text-blue-400 font-medium">S: </span>
+                                <span className="text-slate-300">{nota.subjetivo}</span>
+                              </div>
+                            )}
+                            {nota.objetivo && (
+                              <div>
+                                <span className="text-green-400 font-medium">O: </span>
+                                <span className="text-slate-300">{nota.objetivo}</span>
+                              </div>
+                            )}
+                            {nota.analisis && (
+                              <div>
+                                <span className="text-yellow-400 font-medium">A: </span>
+                                <span className="text-slate-300">{nota.analisis}</span>
+                              </div>
+                            )}
+                            {nota.plan && (
+                              <div>
+                                <span className="text-purple-400 font-medium">P: </span>
+                                <span className="text-slate-300">{nota.plan}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Signos Vitales si los hay */}
+                          {nota.signos_vitales && Object.keys(nota.signos_vitales).length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-700">
+                              {nota.signos_vitales.fc && (
+                                <Badge variant="outline" className="text-xs">FC: {nota.signos_vitales.fc}</Badge>
+                              )}
+                              {nota.signos_vitales.fr && (
+                                <Badge variant="outline" className="text-xs">FR: {nota.signos_vitales.fr}</Badge>
+                              )}
+                              {(nota.signos_vitales.pa_sistolica || nota.signos_vitales.pa_diastolica) && (
+                                <Badge variant="outline" className="text-xs">PA: {nota.signos_vitales.pa_sistolica}/{nota.signos_vitales.pa_diastolica}</Badge>
+                              )}
+                              {nota.signos_vitales.temp && (
+                                <Badge variant="outline" className="text-xs">T°: {nota.signos_vitales.temp}°C</Badge>
+                              )}
+                              {nota.signos_vitales.sat_o2 && (
+                                <Badge variant="outline" className="text-xs">SatO2: {nota.signos_vitales.sat_o2}%</Badge>
+                              )}
+                              {nota.glasgow && (
+                                <Badge variant="outline" className="text-xs">Glasgow: {nota.glasgow}</Badge>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Indicaciones/Medicamentos actualizados */}
+                          {(nota.indicaciones_actualizadas || nota.medicamentos_actualizados) && (
+                            <div className="space-y-1 pt-2 border-t border-slate-700">
+                              {nota.indicaciones_actualizadas && (
+                                <div className="text-xs">
+                                  <span className="text-cyan-400">Indicaciones: </span>
+                                  <span className="text-slate-400">{nota.indicaciones_actualizadas}</span>
+                                </div>
+                              )}
+                              {nota.medicamentos_actualizados && (
+                                <div className="text-xs">
+                                  <span className="text-orange-400">Medicamentos: </span>
+                                  <span className="text-slate-400">{nota.medicamentos_actualizados}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-4 border-t border-slate-700">
+            <Button
+              variant="outline"
+              className="border-slate-700 text-slate-300"
+              onClick={() => setModalEvolucionOpen(false)}
+            >
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Historial del Paciente */}
+      <Dialog open={modalHistorialOpen} onOpenChange={setModalHistorialOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] bg-slate-900 border-slate-800 overflow-hidden flex flex-col" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <History className="w-5 h-5 text-amber-400" />
+              Historial Médico del Paciente
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {historialPaciente?.paciente ? (
+                <>
+                  {historialPaciente.paciente.es_nn 
+                    ? `Paciente NN - ${historialPaciente.paciente.id_temporal}`
+                    : `${historialPaciente.paciente.nombres} ${historialPaciente.paciente.apellidos}`
+                  } - RUT: {historialPaciente.paciente.rut || 'N/A'}
+                </>
+              ) : 'Cargando...'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-2">
+            {historialPaciente?.fichas?.length > 0 ? (
+              <div className="space-y-4">
+                <div className="text-sm text-slate-400 mb-2">
+                  Total de atenciones: <span className="text-white font-medium">{historialPaciente.total_atenciones}</span>
+                </div>
+                {historialPaciente.fichas.map((ficha: any, index: number) => (
+                  <div 
+                    key={ficha.id} 
+                    className={`p-4 rounded-xl border ${index === 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-slate-800/50 border-slate-700'}`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        {index === 0 && (
+                          <Badge className="bg-amber-500 text-white text-xs">Actual</Badge>
+                        )}
+                        <Badge variant="outline" className={`
+                          ${ficha.prioridad === 'C1' ? 'border-red-500 text-red-400' :
+                            ficha.prioridad === 'C2' ? 'border-orange-500 text-orange-400' :
+                            ficha.prioridad === 'C3' ? 'border-yellow-500 text-yellow-400' :
+                            ficha.prioridad === 'C4' ? 'border-green-500 text-green-400' :
+                            'border-blue-500 text-blue-400'}
+                        `}>
+                          {ficha.prioridad}
+                        </Badge>
+                        <Badge variant="outline" className="border-slate-600 text-slate-400">
+                          {ficha.estado?.replace(/_/g, ' ').toUpperCase()}
+                        </Badge>
+                      </div>
+                      <span className="text-sm text-slate-400">
+                        {new Date(ficha.fecha_registro).toLocaleDateString('es-CL', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                    
+                    <p className="text-white font-medium mb-2">
+                      {ficha.motivo_consulta}
+                    </p>
+                    
+                    {ficha.diagnostico && (
+                      <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                        <p className="text-sm text-emerald-400 font-medium mb-1">Diagnóstico:</p>
+                        <p className="text-sm text-slate-300">{ficha.diagnostico.descripcion}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          CIE-10: {ficha.diagnostico.diagnostico_cie10} | 
+                          Alta: {ficha.diagnostico.tipo_alta?.replace(/_/g, ' ')}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {ficha.signos_vitales?.length > 0 && (
+                      <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                        {ficha.signos_vitales[ficha.signos_vitales.length - 1]?.presion_sistolica && (
+                          <div className="p-2 bg-slate-800 rounded text-center">
+                            <span className="text-slate-400">PA</span>
+                            <p className="text-white font-medium">
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].presion_sistolica}/
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].presion_diastolica}
+                            </p>
+                          </div>
+                        )}
+                        {ficha.signos_vitales[ficha.signos_vitales.length - 1]?.frecuencia_cardiaca && (
+                          <div className="p-2 bg-slate-800 rounded text-center">
+                            <span className="text-slate-400">FC</span>
+                            <p className="text-white font-medium">
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].frecuencia_cardiaca}
+                            </p>
+                          </div>
+                        )}
+                        {ficha.signos_vitales[ficha.signos_vitales.length - 1]?.saturacion_o2 && (
+                          <div className="p-2 bg-slate-800 rounded text-center">
+                            <span className="text-slate-400">SpO2</span>
+                            <p className="text-white font-medium">
+                              {ficha.signos_vitales[ficha.signos_vitales.length - 1].saturacion_o2}%
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">
+                <History className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No hay registros anteriores para este paciente</p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end">
+            <Button variant="outline" onClick={() => setModalHistorialOpen(false)} className="border-slate-600">
+              Cerrar
             </Button>
           </div>
         </DialogContent>

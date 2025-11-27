@@ -29,12 +29,12 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
     const currentUser = getSession()
 
     if (!currentUser) {
-      navigate("/")
+      navigate("/", { replace: true })
       return
     }
 
     if (requiredRole && currentUser.rol !== requiredRole) {
-      navigate("/")
+      navigate("/", { replace: true })
       return
     }
 
@@ -44,7 +44,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
 
   const handleLogout = () => {
     clearSession()
-    navigate("/")
+    navigate("/", { replace: true })
   }
 
   if (loading) {

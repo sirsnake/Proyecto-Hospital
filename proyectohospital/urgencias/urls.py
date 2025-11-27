@@ -18,7 +18,10 @@ router.register(r'configuracion', views.ConfiguracionHospitalViewSet, basename='
 router.register(r'camas', views.CamaViewSet, basename='cama')
 router.register(r'archivos', views.ArchivoAdjuntoViewSet, basename='archivo')
 router.register(r'mensajes', views.MensajeChatViewSet, basename='mensaje')
+router.register(r'notas-evolucion', views.NotaEvolucionViewSet, basename='nota-evolucion')
 router.register(r'notificaciones', views.NotificacionViewSet, basename='notificacion')
+router.register(r'turnos', views.TurnoViewSet, basename='turno')
+router.register(r'configuracion-turnos', views.ConfiguracionTurnoViewSet, basename='configuracion-turno')
 
 urlpatterns = [
     path('csrf/', views.csrf_token_view, name='csrf-token'),

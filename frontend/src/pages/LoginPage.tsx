@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { authAPI } from "@/lib/api"
-import { setSession, getRoleDashboardPath } from "@/lib/auth"
+import { setSession, getSession, getRoleDashboardPath } from "@/lib/auth"
 import { Activity } from "lucide-react"
 
 export default function LoginPage() {
@@ -16,6 +16,15 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
+  // Verificar si ya hay una sesión activa
+  useEffect(() => {
+    const currentUser = getSession()
+    if (currentUser) {
+      // Si ya hay sesión, redirigir al dashboard correspondiente
+      navigate(getRoleDashboardPath(currentUser.rol), { replace: true })
+    }
+  }, [navigate])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -24,7 +33,7 @@ export default function LoginPage() {
     try {
       const response = await authAPI.login(email, password)
       setSession(response.user)
-      navigate(getRoleDashboardPath(response.user.rol))
+      navigate(getRoleDashboardPath(response.user.rol), { replace: true })
     } catch (err: any) {
       setError(err.message || "Credenciales inválidas. Por favor, verifica tu email y contraseña.")
       setLoading(false)

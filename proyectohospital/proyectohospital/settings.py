@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,12 +22,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-2c6p0@zl9_rg7a2v**z13qfj&+$a9&y7fh17*o+aj!l!ri1$ph'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-2c6p0@zl9_rg7a2v**z13qfj&+$a9&y7fh17*o+aj!l!ri1$ph')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['*', '.railway.app', '.up.railway.app']
 
 
 # Application definition
@@ -46,6 +48,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,16 +82,20 @@ WSGI_APPLICATION = 'proyectohospital.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'hospital',
-        'USER': 'admin',
-        'PASSWORD': 'snaket',
-        'HOST': 'localhost',
-        'PORT': '3306',
+# Si hay DATABASE_URL (Railway), usar PostgreSQL; si no, SQLite local
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -126,6 +133,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -149,11 +158,16 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8000",
     "http://localhost:8001",
     "http://127.0.0.1:8001",
-    # Túneles de VS Code - URLs específicas
-    "https://w7rcgjrp-3000.brs.devtunnels.ms",
-    "https://w7rcgjrp-3001.brs.devtunnels.ms",
-    "https://w7rcgjrp-8000.brs.devtunnels.ms",
-    "https://w7rcgjrp-8001.brs.devtunnels.ms",
+    # IP local para la app móvil
+    "http://192.168.1.98:3000",
+    "http://192.168.1.98:8000",
+    # Túneles de VS Code
+    "https://m6cznqr0-3000.brs.devtunnels.ms",
+    "https://m6cznqr0-8000.brs.devtunnels.ms",
+    "https://*.devtunnels.ms",
+    # Railway
+    "https://*.railway.app",
+    "https://*.up.railway.app",
 ]
 
 CSRF_COOKIE_HTTPONLY = False
@@ -202,4 +216,13 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
 
 # Allowed file types for uploads
-ALLOWED_UPLOAD_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.odt', '.ods']
+ALLOWED_UPLOAD_EXTENSIONS = [
+    # Imágenes
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico', '.tiff', '.tif', '.heic', '.heif', '.avif',
+    # Videos
+    '.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v', '.3gp', '.wmv',
+    # Audio
+    '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma', '.webm',
+    # Documentos
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.odt', '.ods', '.ppt', '.pptx', '.txt', '.rtf', '.csv'
+]

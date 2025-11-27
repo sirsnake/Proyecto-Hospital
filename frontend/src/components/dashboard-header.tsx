@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Activity, LogOut, UserIcon } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { NotificationBell } from "@/components/notification-bell"
 
 interface DashboardHeaderProps {
   user: User
@@ -46,8 +45,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Botón de Notificaciones */}
-          <NotificationBell />
+          {/* Notificaciones deshabilitadas temporalmente */}
 
           {/* Menú de Usuario */}
           <DropdownMenu>
