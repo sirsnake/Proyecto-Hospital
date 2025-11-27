@@ -8,8 +8,8 @@ from .settings import *
 # Producción
 DEBUG = False
 
-# Tu username de PythonAnywhere (CAMBIAR POR EL TUYO)
-PYTHONANYWHERE_USERNAME = 'TU_USERNAME_AQUI'
+# Username de PythonAnywhere
+PYTHONANYWHERE_USERNAME = 'SirSnake'
 
 ALLOWED_HOSTS = [
     f'{PYTHONANYWHERE_USERNAME}.pythonanywhere.com',
@@ -17,13 +17,13 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
 ]
 
-# Base de datos MySQL de PythonAnywhere (CAMBIAR CREDENCIALES)
+# Base de datos MySQL de PythonAnywhere
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': f'{PYTHONANYWHERE_USERNAME}$hospital',
         'USER': PYTHONANYWHERE_USERNAME,
-        'PASSWORD': 'TU_PASSWORD_DB_AQUI',
+        'PASSWORD': 'Snaket69',
         'HOST': f'{PYTHONANYWHERE_USERNAME}.mysql.pythonanywhere-services.com',
         'PORT': '3306',
         'OPTIONS': {
