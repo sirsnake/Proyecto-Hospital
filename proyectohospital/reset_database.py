@@ -280,16 +280,19 @@ def crear_configuracion():
     
     # Configuración de turnos
     if not ConfiguracionTurno.objects.exists():
+        from datetime import time
         ConfiguracionTurno.objects.create(
-            nombre='Turno Día',
-            hora_inicio='08:00',
-            hora_fin='20:00',
+            tipo='AM',
+            hora_inicio=time(8, 0),
+            hora_fin=time(20, 0),
+            descripcion='Turno de día',
             activo=True
         )
         ConfiguracionTurno.objects.create(
-            nombre='Turno Noche',
-            hora_inicio='20:00',
-            hora_fin='08:00',
+            tipo='PM',
+            hora_inicio=time(20, 0),
+            hora_fin=time(8, 0),
+            descripcion='Turno de noche',
             activo=True
         )
         print("   + Configuración de turnos creada")
