@@ -69,7 +69,38 @@ USUARIOS = [
         'rut': '44444444-4',
     },
     
-    # Usuarios de producción (@hospital.cl)
+    # Usuarios personalizados (@hospital.cl) - Para producción y desarrollo
+    {
+        'username': 'bnunez',
+        'email': 'bnunez@hospital.cl',
+        'password': 'tens123',
+        'first_name': 'Brayan',
+        'last_name': 'Nuñez',
+        'rol': 'tens',
+        'rut': '19000001-1',
+    },
+    {
+        'username': 'rcastillo',
+        'email': 'rcastillo@hospital.cl',
+        'password': 'paramedico123',
+        'first_name': 'Ruben',
+        'last_name': 'Castillo',
+        'rol': 'paramedico',
+        'rut': '19000002-2',
+    },
+    {
+        'username': 'dmejias',
+        'email': 'dmejias@hospital.cl',
+        'password': 'medico123',
+        'first_name': 'Diego',
+        'last_name': 'Mejias',
+        'rol': 'medico',
+        'rut': '19000003-3',
+        'especialidad': 'Medicina de Urgencia',
+        'registro_profesional': 'MED-100',
+    },
+    
+    # Admin de producción
     {
         'username': 'adminprod',
         'email': 'admin@hospital.cl',
@@ -80,64 +111,6 @@ USUARIOS = [
         'rut': '10000000-0',
         'is_staff': True,
         'is_superuser': True,
-    },
-    {
-        'username': 'drperez',
-        'email': 'carlos.perez@hospital.cl',
-        'password': 'medico123',
-        'first_name': 'Carlos',
-        'last_name': 'Pérez Soto',
-        'rol': 'medico',
-        'rut': '12345678-9',
-        'especialidad': 'Medicina de Urgencia',
-        'registro_profesional': 'MED-001',
-    },
-    {
-        'username': 'drasilva',
-        'email': 'maria.silva@hospital.cl',
-        'password': 'medico123',
-        'first_name': 'María',
-        'last_name': 'Silva González',
-        'rol': 'medico',
-        'rut': '12345678-0',
-        'especialidad': 'Medicina Interna',
-        'registro_profesional': 'MED-002',
-    },
-    {
-        'username': 'paralopez',
-        'email': 'juan.lopez@hospital.cl',
-        'password': 'paramedico123',
-        'first_name': 'Juan',
-        'last_name': 'López Fuentes',
-        'rol': 'paramedico',
-        'rut': '23456789-1',
-    },
-    {
-        'username': 'parahernandez',
-        'email': 'camila.hernandez@hospital.cl',
-        'password': 'paramedico123',
-        'first_name': 'Camila',
-        'last_name': 'Hernández Vega',
-        'rol': 'paramedico',
-        'rut': '23456789-2',
-    },
-    {
-        'username': 'tenscastro',
-        'email': 'roberto.castro@hospital.cl',
-        'password': 'tens123',
-        'first_name': 'Roberto',
-        'last_name': 'Castro Vera',
-        'rol': 'tens',
-        'rut': '34567890-1',
-    },
-    {
-        'username': 'tenssoto',
-        'email': 'carolina.soto@hospital.cl',
-        'password': 'tens123',
-        'first_name': 'Carolina',
-        'last_name': 'Soto Pino',
-        'rol': 'tens',
-        'rut': '34567890-2',
     },
 ]
 
@@ -327,14 +300,11 @@ def reset_all():
     print("  tens@salud.cl       / tens123")
     print("  paramedico@salud.cl / paramedico123")
     print("-"*50)
-    print("PRODUCCIÓN (@hospital.cl):")
-    print("  admin@hospital.cl          / admin123")
-    print("  carlos.perez@hospital.cl   / medico123")
-    print("  maria.silva@hospital.cl    / medico123")
-    print("  juan.lopez@hospital.cl     / paramedico123")
-    print("  camila.hernandez@hospital.cl / paramedico123")
-    print("  roberto.castro@hospital.cl / tens123")
-    print("  carolina.soto@hospital.cl  / tens123")
+    print("USUARIOS PERSONALIZADOS (@hospital.cl):")
+    print("  bnunez@hospital.cl    / tens123      (TENS - Brayan)")
+    print("  rcastillo@hospital.cl / paramedico123 (Paramédico - Ruben)")
+    print("  dmejias@hospital.cl   / medico123    (Médico - Diego)")
+    print("  admin@hospital.cl     / admin123     (Admin)")
     print("-"*50 + "\n")
 
 
