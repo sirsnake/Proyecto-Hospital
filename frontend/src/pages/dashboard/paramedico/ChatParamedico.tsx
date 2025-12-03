@@ -79,6 +79,17 @@ function ChatParamedicoPage() {
   const [grabandoAudio, setGrabandoAudio] = useState(false)
   const [tiempoGrabacion, setTiempoGrabacion] = useState(0)
   
+  // Estados para modal de cámara
+  const [mostrarCamara, setMostrarCamara] = useState(false)
+  const [tipoCamara, setTipoCamara] = useState<'foto' | 'video'>('foto')
+  const [grabandoVideo, setGrabandoVideo] = useState(false)
+  const [tiempoVideo, setTiempoVideo] = useState(0)
+  const videoPreviewRef = useRef<HTMLVideoElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
+  const videoRecorderRef = useRef<MediaRecorder | null>(null)
+  const videoChunksRef = useRef<Blob[]>([])
+  const videoTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
   // Refs para grabación
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -255,53 +266,164 @@ function ChatParamedicoPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Abrir cámara
+  // Abrir cámara - Siempre usa modal con preview en todos los dispositivos
   const abrirCamara = async (tipo: 'foto' | 'video') => {
-    if (isMobile) {
-      if (tipo === 'foto') {
-        cameraInputRef.current?.click()
-      } else {
-        videoInputRef.current?.click()
+    setTipoCamara(tipo)
+    setMostrarCamara(true)
+    setGrabandoVideo(false)
+    setTiempoVideo(0)
+    
+    try {
+      // En móvil usar cámara trasera (environment), en desktop la frontal (user)
+      const facingMode = isMobile ? 'environment' : 'user'
+      const constraints = tipo === 'foto' 
+        ? { video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } } }
+        : { video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true }
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      cameraStreamRef.current = stream
+      
+      // Esperar a que el ref esté disponible
+      setTimeout(() => {
+        if (videoPreviewRef.current) {
+          videoPreviewRef.current.srcObject = stream
+          videoPreviewRef.current.play()
+        }
+      }, 100)
+    } catch (err) {
+      console.error('Error accediendo a la cámara:', err)
+      setMostrarCamara(false)
+    }
+  }
+  
+  // Cerrar modal de cámara
+  const cerrarCamara = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop())
+      cameraStreamRef.current = null
+    }
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      videoRecorderRef.current.stop()
+    }
+    if (videoTimerRef.current) {
+      clearInterval(videoTimerRef.current)
+      videoTimerRef.current = null
+    }
+    setMostrarCamara(false)
+    setGrabandoVideo(false)
+    setTiempoVideo(0)
+  }
+  
+  // Capturar foto desde el preview
+  const capturarFoto = () => {
+    if (!videoPreviewRef.current || !cameraStreamRef.current) return
+    
+    const video = videoPreviewRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 1280
+    canvas.height = video.videoHeight || 720
+    const ctx = canvas.getContext('2d')
+    
+    if (ctx) {
+      // Solo voltear en desktop (cámara frontal tiene efecto espejo)
+      if (!isMobile) {
+        ctx.translate(canvas.width, 0)
+        ctx.scale(-1, 1)
       }
-    } else {
+      ctx.drawImage(video, 0, 0)
+    }
+    
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = createFileFromBlob(blob, `foto_${Date.now()}.jpg`, 'image/jpeg')
+        setArchivoSeleccionado(file)
+        cerrarCamara()
+      }
+    }, 'image/jpeg', 0.9)
+  }
+  
+  // Iniciar grabación de video
+  const iniciarGrabacionVideo = () => {
+    if (!cameraStreamRef.current) return
+    
+    videoChunksRef.current = []
+    
+    try {
+      const recorder = new MediaRecorder(cameraStreamRef.current, {
+        mimeType: 'video/webm;codecs=vp9,opus'
+      })
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          videoChunksRef.current.push(e.data)
+        }
+      }
+      
+      recorder.onstop = () => {
+        const blob = new Blob(videoChunksRef.current, { type: 'video/webm' })
+        const file = createFileFromBlob(blob, `video_${Date.now()}.webm`, 'video/webm')
+        setArchivoSeleccionado(file)
+        cerrarCamara()
+      }
+      
+      videoRecorderRef.current = recorder
+      recorder.start(100)
+      setGrabandoVideo(true)
+      setTiempoVideo(0)
+      
+      videoTimerRef.current = setInterval(() => {
+        setTiempoVideo(prev => prev + 1)
+      }, 1000)
+      
+    } catch (err) {
+      console.error('Error iniciando grabación:', err)
       try {
-        const constraints = tipo === 'foto' 
-          ? { video: { facingMode: 'user' } }
-          : { video: { facingMode: 'user' }, audio: true }
+        const recorder = new MediaRecorder(cameraStreamRef.current)
         
-        const stream = await navigator.mediaDevices.getUserMedia(constraints)
-        const video = document.createElement('video')
-        video.srcObject = stream
-        video.play()
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            videoChunksRef.current.push(e.data)
+          }
+        }
         
-        if (tipo === 'foto') {
-          await new Promise(resolve => setTimeout(resolve, 500))
-          const canvas = document.createElement('canvas')
-          canvas.width = video.videoWidth || 640
-          canvas.height = video.videoHeight || 480
-          const ctx = canvas.getContext('2d')
-          ctx?.drawImage(video, 0, 0)
-          
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const file = createFileFromBlob(blob, `foto_${Date.now()}.jpg`, 'image/jpeg')
-              setArchivoSeleccionado(file)
-            }
-            stream.getTracks().forEach(track => track.stop())
-          }, 'image/jpeg', 0.9)
-        } else {
-          videoInputRef.current?.click()
-          stream.getTracks().forEach(track => track.stop())
+        recorder.onstop = () => {
+          const blob = new Blob(videoChunksRef.current, { type: 'video/webm' })
+          const file = createFileFromBlob(blob, `video_${Date.now()}.webm`, 'video/webm')
+          setArchivoSeleccionado(file)
+          cerrarCamara()
         }
-      } catch (err) {
-        console.error('Error accediendo a la cámara:', err)
-        if (tipo === 'foto') {
-          cameraInputRef.current?.click()
-        } else {
-          videoInputRef.current?.click()
-        }
+        
+        videoRecorderRef.current = recorder
+        recorder.start(100)
+        setGrabandoVideo(true)
+        setTiempoVideo(0)
+        
+        videoTimerRef.current = setInterval(() => {
+          setTiempoVideo(prev => prev + 1)
+        }, 1000)
+      } catch (err2) {
+        console.error('Error con fallback de grabación:', err2)
       }
     }
+  }
+  
+  // Detener grabación de video
+  const detenerGrabacionVideo = () => {
+    if (videoTimerRef.current) {
+      clearInterval(videoTimerRef.current)
+      videoTimerRef.current = null
+    }
+    
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      videoRecorderRef.current.stop()
+    }
+  }
+  
+  // Formatear tiempo de video
+  const formatearTiempoVideo = (segundos: number) => {
+    const mins = Math.floor(segundos / 60)
+    const secs = segundos % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   // Enviar mensaje
@@ -438,8 +560,105 @@ function ChatParamedicoPage() {
     }
   }
 
+  // Modal de cámara para todos los dispositivos
+  const CameraModal = () => {
+    if (!mostrarCamara) return null
+    
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-sm safe-area-top">
+          <div className="flex items-center gap-2">
+            {tipoCamara === 'foto' ? (
+              <Camera className="h-5 w-5 text-blue-400" />
+            ) : (
+              <Video className="h-5 w-5 text-red-400" />
+            )}
+            <h3 className="text-white font-medium">
+              {tipoCamara === 'foto' ? 'Tomar Foto' : 'Grabar Video'}
+            </h3>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={cerrarCamara}
+            className="text-slate-400 hover:text-white"
+          >
+            <X className="h-6 w-6" />
+          </Button>
+        </div>
+        
+        {/* Preview de cámara - ocupa todo el espacio disponible */}
+        <div className="flex-1 relative bg-black">
+          <video
+            ref={videoPreviewRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${!isMobile ? 'transform scale-x-[-1]' : ''}`}
+          />
+          
+          {/* Indicador de grabación */}
+          {grabandoVideo && (
+            <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-600/90 px-4 py-2 rounded-full">
+              <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+              <span className="text-white font-medium">
+                REC {formatearTiempoVideo(tiempoVideo)}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        {/* Controles - estilo cámara de celular */}
+        <div className="p-6 flex justify-center items-center gap-8 bg-slate-900/90 backdrop-blur-sm safe-area-bottom">
+          {/* Botón cancelar a la izquierda */}
+          <Button
+            variant="ghost"
+            onClick={cerrarCamara}
+            className="text-slate-300 hover:text-white"
+          >
+            Cancelar
+          </Button>
+          
+          {/* Botón principal en el centro */}
+          {tipoCamara === 'foto' ? (
+            // Botón de captura de foto - estilo cámara
+            <button
+              onClick={capturarFoto}
+              className="w-20 h-20 rounded-full bg-white border-4 border-slate-600 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-white border-2 border-slate-400" />
+            </button>
+          ) : (
+            // Controles de video
+            !grabandoVideo ? (
+              <button
+                onClick={iniciarGrabacionVideo}
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform flex items-center justify-center"
+              >
+                <div className="w-8 h-8 rounded-full bg-red-400" />
+              </button>
+            ) : (
+              <button
+                onClick={detenerGrabacionVideo}
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform animate-pulse flex items-center justify-center"
+              >
+                <Square className="w-8 h-8 text-white" />
+              </button>
+            )
+          )}
+          
+          {/* Espacio a la derecha para balance */}
+          <div className="w-16" />
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col">
+    <>
+      <CameraModal />
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md">
         <div className="container mx-auto px-4 py-3">
@@ -770,7 +989,8 @@ function ChatParamedicoPage() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 

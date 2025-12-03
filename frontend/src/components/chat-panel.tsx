@@ -106,6 +106,17 @@ export function ChatPanel({
   const [grabandoAudio, setGrabandoAudio] = useState(false)
   const [tiempoGrabacion, setTiempoGrabacion] = useState(0)
   
+  // Estados para modal de cámara
+  const [mostrarCamara, setMostrarCamara] = useState(false)
+  const [tipoCamara, setTipoCamara] = useState<'foto' | 'video'>('foto')
+  const [grabandoVideo, setGrabandoVideo] = useState(false)
+  const [tiempoVideo, setTiempoVideo] = useState(0)
+  const videoPreviewRef = useRef<HTMLVideoElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
+  const videoRecorderRef = useRef<MediaRecorder | null>(null)
+  const videoChunksRef = useRef<Blob[]>([])
+  const videoTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
   // Refs para grabación (evitar problemas de estado)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -636,75 +647,171 @@ export function ChatPanel({
     }
   }
   
-  // Abrir cámara nativa (para dispositivos con cámara)
+  // Abrir cámara - Siempre usa modal con preview en todos los dispositivos
   const abrirCamara = async (tipo: 'foto' | 'video') => {
-    if (isMobile) {
-      // En móvil, usar el input con capture
-      if (tipo === 'foto') {
-        cameraInputRef.current?.click()
-      } else {
-        videoInputRef.current?.click()
-      }
-    } else {
-      // En desktop, intentar usar getUserMedia
-      try {
-        const constraints = tipo === 'foto' 
-          ? { video: { facingMode: 'user' } }
-          : { video: { facingMode: 'user' }, audio: true }
-        
-        const stream = await navigator.mediaDevices.getUserMedia(constraints)
-        
-        // Crear un video element temporal para capturar
-        const video = document.createElement('video')
-        video.srcObject = stream
-        video.play()
-        
-        if (tipo === 'foto') {
-          // Esperar a que el video cargue
-          await new Promise(resolve => setTimeout(resolve, 500))
-          
-          // Capturar frame
-          const canvas = document.createElement('canvas')
-          canvas.width = video.videoWidth || 640
-          canvas.height = video.videoHeight || 480
-          const ctx = canvas.getContext('2d')
-          ctx?.drawImage(video, 0, 0)
-          
-          // Convertir a archivo
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const file = createFileFromBlob(blob, `foto_${Date.now()}.jpg`, 'image/jpeg')
-              setArchivoSeleccionado(file)
-            }
-            stream.getTracks().forEach(t => t.stop())
-          }, 'image/jpeg', 0.8)
-        } else {
-          // Grabar video
-          const recorder = new MediaRecorder(stream)
-          const chunks: Blob[] = []
-          
-          recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) chunks.push(e.data)
-          }
-          
-          recorder.onstop = () => {
-            const blob = new Blob(chunks, { type: 'video/webm' })
-            const file = createFileFromBlob(blob, `video_${Date.now()}.webm`, 'video/webm')
-            setArchivoSeleccionado(file)
-            stream.getTracks().forEach(t => t.stop())
-          }
-          
-          recorder.start()
-          // Grabar 10 segundos máximo, o hasta que el usuario pare
-          setTimeout(() => {
-            if (recorder.state !== 'inactive') recorder.stop()
-          }, 10000)
+    setTipoCamara(tipo)
+    setMostrarCamara(true)
+    setGrabandoVideo(false)
+    setTiempoVideo(0)
+    
+    try {
+      // En móvil usar cámara trasera (environment), en desktop la frontal (user)
+      const facingMode = isMobile ? 'environment' : 'user'
+      const constraints = tipo === 'foto' 
+        ? { video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } } }
+        : { video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true }
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      cameraStreamRef.current = stream
+      
+      // Esperar a que el ref esté disponible
+      setTimeout(() => {
+        if (videoPreviewRef.current) {
+          videoPreviewRef.current.srcObject = stream
+          videoPreviewRef.current.play()
         }
-      } catch (err) {
-        console.error('Error accediendo a la cámara:', err)
-        setError('No se pudo acceder a la cámara. Usa "Archivo" para seleccionar una imagen.')
+      }, 100)
+    } catch (err) {
+      console.error('Error accediendo a la cámara:', err)
+      setMostrarCamara(false)
+      setError('No se pudo acceder a la cámara. Verifica los permisos.')
+    }
+  }
+  
+  // Cerrar modal de cámara
+  const cerrarCamara = () => {
+    // Detener stream
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop())
+      cameraStreamRef.current = null
+    }
+    // Detener grabación si está activa
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      videoRecorderRef.current.stop()
+    }
+    // Limpiar timer
+    if (videoTimerRef.current) {
+      clearInterval(videoTimerRef.current)
+      videoTimerRef.current = null
+    }
+    setMostrarCamara(false)
+    setGrabandoVideo(false)
+    setTiempoVideo(0)
+  }
+  
+  // Capturar foto desde el preview
+  const capturarFoto = () => {
+    if (!videoPreviewRef.current || !cameraStreamRef.current) return
+    
+    const video = videoPreviewRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 1280
+    canvas.height = video.videoHeight || 720
+    const ctx = canvas.getContext('2d')
+    
+    if (ctx) {
+      // Solo voltear en desktop (cámara frontal tiene efecto espejo)
+      if (!isMobile) {
+        ctx.translate(canvas.width, 0)
+        ctx.scale(-1, 1)
+      }
+      ctx.drawImage(video, 0, 0)
+    }
+    
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = createFileFromBlob(blob, `foto_${Date.now()}.jpg`, 'image/jpeg')
+        setArchivoSeleccionado(file)
+        cerrarCamara()
+      }
+    }, 'image/jpeg', 0.9)
+  }
+  
+  // Iniciar grabación de video
+  const iniciarGrabacionVideo = () => {
+    if (!cameraStreamRef.current) return
+    
+    videoChunksRef.current = []
+    
+    try {
+      const recorder = new MediaRecorder(cameraStreamRef.current, {
+        mimeType: 'video/webm;codecs=vp9,opus'
+      })
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          videoChunksRef.current.push(e.data)
+        }
+      }
+      
+      recorder.onstop = () => {
+        const blob = new Blob(videoChunksRef.current, { type: 'video/webm' })
+        const file = createFileFromBlob(blob, `video_${Date.now()}.webm`, 'video/webm')
+        setArchivoSeleccionado(file)
+        cerrarCamara()
+      }
+      
+      videoRecorderRef.current = recorder
+      recorder.start(100) // Guardar chunks cada 100ms
+      setGrabandoVideo(true)
+      setTiempoVideo(0)
+      
+      // Timer para mostrar tiempo
+      videoTimerRef.current = setInterval(() => {
+        setTiempoVideo(prev => prev + 1)
+      }, 1000)
+      
+    } catch (err) {
+      console.error('Error iniciando grabación:', err)
+      // Fallback: probar sin codec específico
+      try {
+        const recorder = new MediaRecorder(cameraStreamRef.current)
+        
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            videoChunksRef.current.push(e.data)
+          }
+        }
+        
+        recorder.onstop = () => {
+          const blob = new Blob(videoChunksRef.current, { type: 'video/webm' })
+          const file = createFileFromBlob(blob, `video_${Date.now()}.webm`, 'video/webm')
+          setArchivoSeleccionado(file)
+          cerrarCamara()
+        }
+        
+        videoRecorderRef.current = recorder
+        recorder.start(100)
+        setGrabandoVideo(true)
+        setTiempoVideo(0)
+        
+        videoTimerRef.current = setInterval(() => {
+          setTiempoVideo(prev => prev + 1)
+        }, 1000)
+      } catch (err2) {
+        console.error('Error con fallback de grabación:', err2)
+        setError('No se pudo iniciar la grabación de video')
       }
     }
+  }
+  
+  // Detener grabación de video
+  const detenerGrabacionVideo = () => {
+    if (videoTimerRef.current) {
+      clearInterval(videoTimerRef.current)
+      videoTimerRef.current = null
+    }
+    
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      videoRecorderRef.current.stop()
+    }
+  }
+  
+  // Formatear tiempo de video
+  const formatearTiempoVideo = (segundos: number) => {
+    const mins = Math.floor(segundos / 60)
+    const secs = segundos % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
   
   // Manejar captura de video desde cámara
@@ -719,16 +826,117 @@ export function ChatPanel({
     }
   }
 
+  // Modal de cámara para todos los dispositivos
+  const CameraModal = () => {
+    if (!mostrarCamara) return null
+    
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-sm safe-area-top">
+          <div className="flex items-center gap-2">
+            {tipoCamara === 'foto' ? (
+              <Camera className="h-5 w-5 text-blue-400" />
+            ) : (
+              <Video className="h-5 w-5 text-red-400" />
+            )}
+            <h3 className="text-white font-medium">
+              {tipoCamara === 'foto' ? 'Tomar Foto' : 'Grabar Video'}
+            </h3>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={cerrarCamara}
+            className="text-slate-400 hover:text-white"
+          >
+            <X className="h-6 w-6" />
+          </Button>
+        </div>
+        
+        {/* Preview de cámara - ocupa todo el espacio disponible */}
+        <div className="flex-1 relative bg-black">
+          <video
+            ref={videoPreviewRef}
+            autoPlay
+            playsInline
+            muted
+            className={cn(
+              "w-full h-full object-cover",
+              // Solo efecto espejo en desktop (cámara frontal)
+              !isMobile && "transform scale-x-[-1]"
+            )}
+          />
+          
+          {/* Indicador de grabación */}
+          {grabandoVideo && (
+            <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-600/90 px-4 py-2 rounded-full">
+              <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+              <span className="text-white font-medium">
+                REC {formatearTiempoVideo(tiempoVideo)}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        {/* Controles - estilo cámara de celular */}
+        <div className="p-6 flex justify-center items-center gap-8 bg-slate-900/90 backdrop-blur-sm safe-area-bottom">
+          {/* Botón cancelar a la izquierda */}
+          <Button
+            variant="ghost"
+            onClick={cerrarCamara}
+            className="text-slate-300 hover:text-white"
+          >
+            Cancelar
+          </Button>
+          
+          {/* Botón principal en el centro */}
+          {tipoCamara === 'foto' ? (
+            // Botón de captura de foto - estilo cámara
+            <button
+              onClick={capturarFoto}
+              className="w-20 h-20 rounded-full bg-white border-4 border-slate-600 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-white border-2 border-slate-400" />
+            </button>
+          ) : (
+            // Controles de video
+            !grabandoVideo ? (
+              <button
+                onClick={iniciarGrabacionVideo}
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform flex items-center justify-center"
+              >
+                <div className="w-8 h-8 rounded-full bg-red-400" />
+              </button>
+            ) : (
+              <button
+                onClick={detenerGrabacionVideo}
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform animate-pulse flex items-center justify-center"
+              >
+                <Square className="w-8 h-8 text-white" />
+              </button>
+            )
+          )}
+          
+          {/* Espacio a la derecha para balance */}
+          <div className="w-16" />
+        </div>
+      </div>
+    )
+  }
+
   // Modo pantalla completa (para móvil)
   if (fullScreen) {
     return (
-      <div 
-        className="fixed inset-0 z-50 bg-slate-950 flex flex-col" 
-        style={{ 
-          height: '100dvh',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-        }}
-      >
+      <>
+        <CameraModal />
+        <div 
+          className="fixed inset-0 z-50 bg-slate-950 flex flex-col" 
+          style={{ 
+            height: '100dvh',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+          }}
+        >
         {/* Header fijo */}
         <header className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 flex-shrink-0">
           <Button
@@ -755,6 +963,28 @@ export function ChatPanel({
         {error && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 text-red-400 rounded text-sm flex-shrink-0">
             {error}
+          </div>
+        )}
+
+        {/* Barra de grabación de audio - bonita y visible */}
+        {grabandoAudio && (
+          <div className="px-4 pt-2 flex-shrink-0">
+            <div className="flex items-center gap-3 p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
+              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+              <Mic className="w-5 h-5 text-red-400 animate-pulse" />
+              <span className="text-red-300 font-medium">Grabando audio...</span>
+              <span className="text-red-400 font-mono text-lg">{formatearTiempoGrabacion(tiempoGrabacion)}</span>
+              <div className="flex-1" />
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={detenerGrabacionAudio}
+                className="flex items-center gap-1"
+              >
+                <Square className="w-4 h-4" />
+                Detener
+              </Button>
+            </div>
           </div>
         )}
 
@@ -997,25 +1227,6 @@ export function ChatPanel({
               </DropdownMenuContent>
             </DropdownMenu>
             
-            {/* Botón de grabación de audio (visible cuando está grabando) */}
-            {grabandoAudio && (
-              <Button
-                variant="destructive"
-                size="icon"
-                className="flex-shrink-0 animate-pulse"
-                onClick={detenerGrabacionAudio}
-                title="Detener grabación"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
-            )}
-            {grabandoAudio && (
-              <div className="flex items-center text-red-400 text-sm px-2">
-                <span className="animate-pulse mr-2">●</span>
-                {formatearTiempoGrabacion(tiempoGrabacion)}
-              </div>
-            )}
-            
             <textarea
               value={nuevoMensaje}
               onChange={(e) => {
@@ -1044,16 +1255,19 @@ export function ChatPanel({
           </div>
         </div>
       </div>
+      </>
     )
   }
 
   // Modo normal (embebido)
   return (
-    <Card className={cn("flex flex-col overflow-hidden", className)} style={{ minHeight: 0 }}>
-      <CardHeader 
-        className="flex flex-row items-center justify-between space-y-0 pb-2 cursor-pointer flex-shrink-0"
-        onClick={onToggleMinimizar}
-      >
+    <>
+      <CameraModal />
+      <Card className={cn("flex flex-col overflow-hidden", className)} style={{ minHeight: 0 }}>
+        <CardHeader 
+          className="flex flex-row items-center justify-between space-y-0 pb-2 cursor-pointer flex-shrink-0"
+          onClick={onToggleMinimizar}
+        >
         <div className="flex items-center gap-2">
           <MessageCircle className="h-5 w-5" />
           <CardTitle className="text-base">Chat de la Ficha</CardTitle>
@@ -1081,6 +1295,28 @@ export function ChatPanel({
           {error && (
             <div className="mx-4 mb-2 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded text-sm flex-shrink-0">
               {error}
+            </div>
+          )}
+
+          {/* Barra de grabación de audio - bonita y visible */}
+          {grabandoAudio && (
+            <div className="px-4 py-2 flex-shrink-0">
+              <div className="flex items-center gap-2 p-2 bg-red-500/20 border border-red-500/50 rounded-lg">
+                <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+                <Mic className="w-4 h-4 text-red-400 animate-pulse" />
+                <span className="text-red-300 text-sm font-medium">Grabando...</span>
+                <span className="text-red-400 font-mono text-sm">{formatearTiempoGrabacion(tiempoGrabacion)}</span>
+                <div className="flex-1" />
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={detenerGrabacionAudio}
+                  className="h-7 px-2 flex items-center gap-1"
+                >
+                  <Square className="w-3 h-3" />
+                  Detener
+                </Button>
+              </div>
             </div>
           )}
 
@@ -1270,11 +1506,25 @@ export function ChatPanel({
               variant="ghost"
               size="icon"
               onClick={() => fileInputRef.current?.click()}
-              disabled={enviando}
+              disabled={enviando || grabandoAudio}
               className="flex-shrink-0 h-10 w-10"
+              title="Adjuntar archivo"
             >
               <Paperclip className="h-5 w-5" />
             </Button>
+            {/* Botón de micrófono */}
+            {!grabandoAudio && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={iniciarGrabacionAudio}
+                disabled={enviando}
+                className="flex-shrink-0 h-10 w-10"
+                title="Grabar audio"
+              >
+                <Mic className="h-5 w-5" />
+              </Button>
+            )}
             <div className="flex-1 relative">
               <textarea
                 placeholder="Escribe un mensaje..."
@@ -1309,6 +1559,7 @@ export function ChatPanel({
           </div>
         </CardContent>
       )}
-    </Card>
+      </Card>
+    </>
   )
 }
