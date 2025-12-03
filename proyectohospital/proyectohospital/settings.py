@@ -67,7 +67,7 @@ if PYTHONANYWHERE:
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'SirSnake$hospital',
             'USER': 'SirSnake',
-            'PASSWORD': 'Diegomejias1',  # Cambiar si es diferente
+            'PASSWORD': '',  # Sin contraseña
             'HOST': 'SirSnake.mysql.pythonanywhere-services.com',
             'PORT': '3306',
             'OPTIONS': {
