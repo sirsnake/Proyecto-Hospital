@@ -474,7 +474,7 @@ class Cama(models.Model):
     ]
     
     numero = models.CharField(max_length=20, unique=True, help_text="Número o código de la cama")
-    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='cama_general')
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='box')
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='disponible')
     piso = models.IntegerField(validators=[MinValueValidator(1)], blank=True, null=True)
     sala = models.CharField(max_length=50, blank=True, null=True)

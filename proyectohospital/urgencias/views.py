@@ -1,7 +1,13 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
+
+
+class IsAdministrador(BasePermission):
+    """Permiso que solo permite acceso a administradores"""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.rol == 'administrador'
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.contrib.auth import login, logout
 from django.middleware.csrf import get_token
