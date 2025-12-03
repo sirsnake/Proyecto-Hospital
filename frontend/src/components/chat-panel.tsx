@@ -43,7 +43,13 @@ import {
 import { cn } from "@/lib/utils"
 
 // Función para obtener la URL del API dinámicamente
+const USE_PYTHONANYWHERE = true
+
 function getApiBaseUrl(): string {
+  if (USE_PYTHONANYWHERE) {
+    return 'https://sirsnake.pythonanywhere.com/api'
+  }
+  
   if (typeof window === 'undefined') {
     return 'http://localhost:8000/api'
   }

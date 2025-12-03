@@ -1,28 +1,43 @@
 // Servicio para consumir la API de Django
 
+// CAMBIAR A true PARA USAR PYTHONANYWHERE (producción)
+// Para desarrollo local: false
+// Para producción (Vercel/Android): true
+const USE_PYTHONANYWHERE = false
+
 // Detectar si estamos en un túnel de desarrollo o localhost
 function getApiUrl(): string {
+  // Si queremos usar PythonAnywhere explícitamente
+  if (USE_PYTHONANYWHERE) {
+    return 'https://sirsnake.pythonanywhere.com/api'
+  }
+  
   if (typeof window === 'undefined') {
-    return 'http://localhost:8000/api'
+    return 'http://localhost:8003/api'
   }
   
   const hostname = window.location.hostname
   
+  // Si estamos en Vercel (producción), usar PythonAnywhere
+  if (hostname.includes('vercel.app') || hostname.includes('proyecto-hospital')) {
+    return 'https://sirsnake.pythonanywhere.com/api'
+  }
+  
   // Si estamos en localhost, usar localhost
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:8000/api'
+    return 'http://localhost:8003/api'
   }
   
   // Si estamos en un túnel de VS Code, usar el túnel del backend
   if (hostname.includes('devtunnels.ms')) {
     // Reemplazar el puerto del frontend por el del backend
-    // Ej: m6cznqr0-3000.brs.devtunnels.ms -> m6cznqr0-8000.brs.devtunnels.ms
-    const backendHost = hostname.replace('-3000.', '-8000.').replace('-3001.', '-8000.')
+    const backendHost = hostname.replace('-3000.', '-8003.').replace('-3001.', '-8003.')
     return `https://${backendHost}/api`
   }
   
-  // Para otras situaciones (IP local, etc), usar la misma IP con puerto 8000
-  return `http://${hostname.split(':')[0]}:8000/api`
+  // Para app Android u otras situaciones, usar PythonAnywhere
+  // (Android no puede acceder a localhost del PC)
+  return 'https://sirsnake.pythonanywhere.com/api'
 }
 
 const API_URL = getApiUrl()

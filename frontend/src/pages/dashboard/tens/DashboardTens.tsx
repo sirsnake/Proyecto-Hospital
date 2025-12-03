@@ -529,7 +529,8 @@ export default function TensDashboard() {
   const abrirModalCamas = async (ficha: any) => {
     setFichaParaCama(ficha)
     setModalCamasOpen(true)
-    await cargarCamasDisponibles()
+    setTipoCamaFiltro('box')
+    await cargarCamasDisponibles('box')  // TENS solo puede asignar BOX
   }
 
   const handleAsignarCama = async (camaId: number) => {
@@ -2252,38 +2253,15 @@ export default function TensDashboard() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* Filtro por tipo */}
-          <div className="mb-4">
-            <Label className="text-slate-300 mb-2 block">Filtrar por tipo</Label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { value: 'all', label: 'Todos', icon: '' },
-                { value: 'box', label: 'Box Atención', icon: '' },
-                { value: 'camilla', label: 'Camilla', icon: '' },
-                { value: 'cama_general', label: 'Cama General', icon: '' },
-                { value: 'cama_uci', label: 'Cama UCI', icon: '' },
-                { value: 'sala_emergencia', label: 'Sala Emergencia', icon: '' },
-              ].map((tipo) => (
-                <Button
-                  key={tipo.value}
-                  size="sm"
-                  variant={tipoCamaFiltro === tipo.value ? "default" : "outline"}
-                  className={tipoCamaFiltro === tipo.value 
-                    ? "bg-teal-600 hover:bg-teal-700" 
-                    : "border-slate-600 text-slate-300 hover:bg-slate-800"
-                  }
-                  onClick={async () => {
-                    setTipoCamaFiltro(tipo.value)
-                    await cargarCamasDisponibles(tipo.value !== 'all' ? tipo.value : undefined)
-                  }}
-                >
-                  {tipo.icon} {tipo.label}
-                </Button>
-              ))}
-            </div>
+          {/* Info para TENS */}
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <p className="text-sm text-blue-300">
+              📋 Como TENS, solo puedes asignar pacientes a <strong>Box de Atención</strong>.
+              El médico podrá derivar a Hospitalización o UCI según diagnóstico.
+            </p>
           </div>
 
-          {/* Lista de camas disponibles */}
+          {/* Lista de BOX disponibles */}
           <div className="max-h-96 overflow-y-auto">
             {camasDisponibles.length === 0 ? (
               <div className="text-center py-8 bg-slate-800/50 rounded-lg">

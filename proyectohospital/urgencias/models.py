@@ -460,10 +460,9 @@ class ConfiguracionHospital(models.Model):
 class Cama(models.Model):
     """Modelo para gestión de camas/boxes del hospital"""
     TIPO_CHOICES = [
-        ('box', 'Box'),
+        ('box', 'Box de Atención'),
+        ('hospitalizacion', 'Hospitalización'),
         ('uci', 'UCI'),
-        ('uti', 'UTI'),
-        ('cama_general', 'Cama General'),
     ]
     
     ESTADO_CHOICES = [

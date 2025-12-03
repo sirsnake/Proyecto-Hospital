@@ -60,7 +60,8 @@ import {
   Edit,
   FileDown,
   Plus,
-  History
+  History,
+  ArrowRightLeft
 } from "lucide-react"
 
 // Componente de Signo Vital Individual
@@ -237,6 +238,12 @@ export default function MedicoDashboard() {
   const [modalHistorialOpen, setModalHistorialOpen] = useState(false)
   const [historialPaciente, setHistorialPaciente] = useState<any>(null)
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
+
+  // Estados para cambiar estado del paciente
+  const [modalCambiarEstadoOpen, setModalCambiarEstadoOpen] = useState(false)
+  const [fichaParaCambiarEstado, setFichaParaCambiarEstado] = useState<any>(null)
+  const [nuevoEstado, setNuevoEstado] = useState("")
+  const [cambiandoEstado, setCambiandoEstado] = useState(false)
 
   // Hook de control de turno
   const { 
@@ -522,8 +529,19 @@ export default function MedicoDashboard() {
 
   const cargarCamasDisponibles = async (tipo?: string) => {
     try {
-      const camas = await camasAPI.disponibles(tipo !== 'all' ? tipo : undefined)
-      setCamasDisponibles(Array.isArray(camas) ? camas : [])
+      // Para médicos: si no se especifica tipo o es 'all', cargar solo hospitalización y UCI (sin box)
+      let camas: any[]
+      if (!tipo || tipo === 'all') {
+        const [hospitalizacion, uci] = await Promise.all([
+          camasAPI.disponibles('hospitalizacion'),
+          camasAPI.disponibles('uci')
+        ])
+        camas = [...(Array.isArray(hospitalizacion) ? hospitalizacion : []), ...(Array.isArray(uci) ? uci : [])]
+      } else {
+        camas = await camasAPI.disponibles(tipo)
+        camas = Array.isArray(camas) ? camas : []
+      }
+      setCamasDisponibles(camas)
     } catch (err: any) {
       console.error('Error cargando camas:', err)
       toast({
@@ -549,14 +567,19 @@ export default function MedicoDashboard() {
     }
   }
 
-  const abrirModalCamas = async (ficha: any, tipoCama?: "general" | "uci") => {
+  const abrirModalCamas = async (ficha: any, tipoCama?: "hospitalizacion" | "uci") => {
     setFichaParaCama(ficha)
+    // Siempre mostrar todas las camas por defecto al abrir el modal
+    setTipoCamaFiltro('all')
+    setModalCamasOpen(true)
+    // Si se especifica tipo, filtrar por ese tipo
     if (tipoCama) {
       setTipoCamaRequerida(tipoCama)
       setTipoCamaFiltro(tipoCama)
+      await cargarCamasDisponibles(tipoCama)
+    } else {
+      await cargarCamasDisponibles()  // Cargar todas las camas
     }
-    setModalCamasOpen(true)
-    await cargarCamasDisponibles(tipoCama)
   }
 
   const handleAsignarCama = async (camaId: number) => {
@@ -788,8 +811,8 @@ export default function MedicoDashboard() {
       
       // Si es hospitalización o UCI, abrir modal de cama
       if (diagnosticoForm.tipoAlta === 'hospitalizacion' || diagnosticoForm.tipoAlta === 'uci') {
-        const tipoCama = diagnosticoForm.tipoAlta === 'uci' ? 'uci' : 'general'
-        await abrirModalCamas({...fichaSeleccionada, id: fichaSeleccionada.id}, tipoCama as "general" | "uci")
+        const tipoCama = diagnosticoForm.tipoAlta === 'uci' ? 'uci' : 'hospitalizacion'
+        await abrirModalCamas({...fichaSeleccionada, id: fichaSeleccionada.id}, tipoCama as "hospitalizacion" | "uci")
       }
       
       // Limpiar el estado
@@ -900,6 +923,93 @@ export default function MedicoDashboard() {
         variant: "destructive",
         duration: 2000
       })
+    }
+  }
+
+
+  // Cambiar estado del paciente (UCI -> Hospitalización, Alta, etc.)
+  const handleAbrirCambiarEstado = (ficha: any) => {
+    setFichaParaCambiarEstado(ficha)
+    setNuevoEstado("")
+    setModalCambiarEstadoOpen(true)
+  }
+
+  const handleCambiarEstado = async () => {
+    if (!fichaParaCambiarEstado || !nuevoEstado) return
+    
+    setCambiandoEstado(true)
+    try {
+      await fichasAPI.cambiarEstado(fichaParaCambiarEstado.id, nuevoEstado)
+      
+      const estadoTexto: Record<string, string> = {
+        'dado_de_alta': 'Alta Médica',
+        'hospitalizado': 'Hospitalización',
+        'uci': 'UCI',
+        'derivado': 'Derivado',
+        'fallecido': 'Fallecido'
+      }
+      
+      toast({
+        title: "✅ Estado actualizado",
+        description: `El paciente ha sido movido a: ${estadoTexto[nuevoEstado] || nuevoEstado}`,
+        duration: 3000
+      })
+      
+      setModalCambiarEstadoOpen(false)
+      
+      // Si el nuevo estado es UCI o Hospitalización, abrir modal de asignación de cama
+      if (nuevoEstado === 'uci' || nuevoEstado === 'hospitalizado') {
+        const tipoCama = nuevoEstado === 'uci' ? 'uci' : 'hospitalizacion'
+        await abrirModalCamas(fichaParaCambiarEstado, tipoCama as "hospitalizacion" | "uci")
+      }
+      
+      setFichaParaCambiarEstado(null)
+      setNuevoEstado("")
+      await cargarDatos()
+    } catch (err: any) {
+      console.error('Error al cambiar estado:', err)
+      toast({
+        title: "Error",
+        description: err.message || "No se pudo cambiar el estado del paciente",
+        variant: "destructive",
+        duration: 3000
+      })
+    } finally {
+      setCambiandoEstado(false)
+    }
+  }
+
+  // Obtener opciones de estado según estado actual
+  const getOpcionesEstado = (estadoActual: string) => {
+    switch(estadoActual) {
+      case 'uci':
+        return [
+          { value: 'hospitalizado', label: '🏥 Hospitalización (mejoría)' },
+          { value: 'dado_de_alta', label: '✅ Alta Médica' },
+          { value: 'derivado', label: '🚑 Derivar a otro centro' },
+          { value: 'fallecido', label: '⚫ Fallecido' }
+        ]
+      case 'hospitalizado':
+        return [
+          { value: 'uci', label: '🔴 UCI (agravamiento)' },
+          { value: 'dado_de_alta', label: '✅ Alta Médica' },
+          { value: 'derivado', label: '🚑 Derivar a otro centro' },
+          { value: 'fallecido', label: '⚫ Fallecido' }
+        ]
+      case 'atendido':
+        return [
+          { value: 'hospitalizado', label: '🏥 Hospitalización' },
+          { value: 'uci', label: '🔴 UCI' },
+          { value: 'dado_de_alta', label: '✅ Alta Médica' },
+          { value: 'derivado', label: '🚑 Derivar a otro centro' }
+        ]
+      default:
+        return [
+          { value: 'hospitalizado', label: '🏥 Hospitalización' },
+          { value: 'uci', label: '🔴 UCI' },
+          { value: 'dado_de_alta', label: '✅ Alta Médica' },
+          { value: 'derivado', label: '🚑 Derivar a otro centro' }
+        ]
     }
   }
 
@@ -2200,6 +2310,14 @@ export default function MedicoDashboard() {
                               <History className="w-4 h-4 mr-2" />
                               Historial
                             </Button>
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => handleAbrirCambiarEstado(ficha)}
+                            >
+                              <ArrowRightLeft className="w-4 h-4 mr-2" />
+                              Cambiar Estado
+                            </Button>
                             <CollapsibleTrigger asChild>
                               <Button
                                 variant="outline"
@@ -2661,12 +2779,20 @@ export default function MedicoDashboard() {
                             <Button 
                               size="sm"
                               className="bg-indigo-600 hover:bg-indigo-700"
-                              onClick={() => abrirModalCamas(ficha, 'general')}
+                              onClick={() => abrirModalCamas(ficha, 'hospitalizacion')}
                             >
                               <Bed className="w-4 h-4 mr-2" />
                               Asignar Cama
                             </Button>
                           )}
+                          <Button 
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => handleAbrirCambiarEstado(ficha)}
+                          >
+                            <ArrowRightLeft className="w-4 h-4 mr-2" />
+                            Cambiar Estado
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
@@ -2782,6 +2908,14 @@ export default function MedicoDashboard() {
                               Asignar Cama UCI
                             </Button>
                           )}
+                          <Button 
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => handleAbrirCambiarEstado(ficha)}
+                          >
+                            <ArrowRightLeft className="w-4 h-4 mr-2" />
+                            Cambiar Estado
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
@@ -3053,10 +3187,9 @@ export default function MedicoDashboard() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-slate-800 border-slate-700">
-                <SelectItem value="all" className="text-white">Todas las camas</SelectItem>
-                <SelectItem value="general" className="text-white">Camas Generales</SelectItem>
-                <SelectItem value="uci" className="text-white">Camas UCI</SelectItem>
-                <SelectItem value="emergencia" className="text-white">Salas de Emergencia</SelectItem>
+                <SelectItem value="all" className="text-white">Hospitalización + UCI</SelectItem>
+                <SelectItem value="hospitalizacion" className="text-white">🏥 Hospitalización</SelectItem>
+                <SelectItem value="uci" className="text-white">🔴 UCI</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -3079,9 +3212,14 @@ export default function MedicoDashboard() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-lg font-bold text-white">{cama.numero}</span>
-                          <Badge variant="outline" className="border-blue-500 text-blue-400">
-                            {cama.tipo === 'general' ? 'General' :
-                             cama.tipo === 'uci' ? 'UCI' : 'Emergencia'}
+                          <Badge variant="outline" className={
+                            cama.tipo === 'hospitalizacion' ? 'border-indigo-500 text-indigo-400' :
+                            cama.tipo === 'uci' ? 'border-red-500 text-red-400' :
+                            'border-blue-500 text-blue-400'
+                          }>
+                            {cama.tipo === 'hospitalizacion' ? '🏥 Hospitalización' :
+                             cama.tipo === 'uci' ? '🔴 UCI' :
+                             cama.tipo === 'box' ? '📦 Box' : cama.tipo_display || cama.tipo}
                           </Badge>
                           <Badge variant="outline" className="border-green-500 text-green-400">
                             ✅ Disponible
@@ -3410,6 +3548,105 @@ Ejemplo:
                 <>
                   <CheckCircle className="w-4 h-4 mr-2" />
                   Guardar Cambio
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Cambiar Estado del Paciente */}
+      <Dialog open={modalCambiarEstadoOpen} onOpenChange={setModalCambiarEstadoOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5 text-emerald-400" />
+              Cambiar Estado del Paciente
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {fichaParaCambiarEstado && (
+                <span>
+                  Paciente: <strong className="text-white">
+                    {fichaParaCambiarEstado.paciente?.nombres || 'NN'} {fichaParaCambiarEstado.paciente?.apellidos || fichaParaCambiarEstado.paciente?.identificador_nn}
+                  </strong>
+                  <br />
+                  Estado actual: <Badge className="ml-1 bg-slate-700">{fichaParaCambiarEstado.estado}</Badge>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="nuevoEstado">Nuevo Estado</Label>
+              <Select value={nuevoEstado} onValueChange={setNuevoEstado}>
+                <SelectTrigger className="bg-slate-800 border-slate-700">
+                  <SelectValue placeholder="Seleccione el nuevo estado" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  {fichaParaCambiarEstado && getOpcionesEstado(fichaParaCambiarEstado.estado).map((opcion) => (
+                    <SelectItem key={opcion.value} value={opcion.value}>
+                      <span>{opcion.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {nuevoEstado === 'dado_de_alta' && (
+              <Alert className="bg-green-500/10 border-green-500/30">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <AlertDescription className="text-green-300 text-sm">
+                  El paciente será dado de alta y la cama asignada quedará libre.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {nuevoEstado === 'fallecido' && (
+              <Alert className="bg-slate-700/50 border-slate-600">
+                <AlertTriangle className="w-4 h-4 text-slate-400" />
+                <AlertDescription className="text-slate-300 text-sm">
+                  Esta acción registrará el fallecimiento del paciente.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {nuevoEstado === 'uci' && (
+              <Alert className="bg-red-500/10 border-red-500/30">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <AlertDescription className="text-red-300 text-sm">
+                  El paciente será trasladado a UCI. Recuerde asignar una cama UCI después.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+          
+          <div className="flex gap-3 justify-end">
+            <Button
+              variant="outline"
+              className="border-slate-700 text-slate-300"
+              onClick={() => {
+                setModalCambiarEstadoOpen(false)
+                setFichaParaCambiarEstado(null)
+                setNuevoEstado("")
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={handleCambiarEstado}
+              disabled={!nuevoEstado || cambiandoEstado}
+            >
+              {cambiandoEstado ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Procesando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Confirmar Cambio
                 </>
               )}
             </Button>
