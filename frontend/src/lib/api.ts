@@ -823,29 +823,34 @@ export const chatAPI = {
     return fetchWithCredentials(`${API_URL}/mensajes/por_ficha/?ficha_id=${fichaId}`)
   },
 
-  enviarMensaje: async (fichaId: number, contenido: string, archivo?: File) => {
+  enviarMensaje: async (fichaId: number, contenido: string, archivoAdjuntoId?: number) => {
     await ensureCSRFToken()
     const csrfToken = getCookie('csrftoken')
     
-    const formData = new FormData()
-    formData.append('ficha', fichaId.toString())
-    formData.append('contenido', contenido)
-    if (archivo) {
-      formData.append('archivo', archivo)
+    // El serializer espera JSON con ficha_id, contenido, y opcionalmente archivo_adjunto_id
+    const body: { ficha_id: number; contenido: string; archivo_adjunto_id?: number } = {
+      ficha_id: fichaId,
+      contenido: contenido || '(Mensaje)',
+    }
+    
+    if (archivoAdjuntoId) {
+      body.archivo_adjunto_id = archivoAdjuntoId
     }
     
     const response = await fetch(`${API_URL}/mensajes/`, {
       method: 'POST',
       credentials: 'include',
       headers: {
+        'Content-Type': 'application/json',
         ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
       },
-      body: formData,
+      body: JSON.stringify(body),
     })
     
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: 'Error enviando mensaje' }))
-      throw new Error(error.detail || 'Error enviando mensaje')
+      console.error('Error enviando mensaje:', error)
+      throw new Error(error.detail || JSON.stringify(error) || 'Error enviando mensaje')
     }
     
     return response.json()
@@ -859,6 +864,39 @@ export const chatAPI = {
     } catch (error) {
       // Silenciar errores de polling para no saturar la consola
       return { mensajes: [], notificaciones: [], notificaciones_no_leidas: 0 }
+    }
+  },
+
+  // Subir archivo para adjuntar a un mensaje
+  subirArchivo: async (fichaId: number, archivo: File): Promise<number | null> => {
+    await ensureCSRFToken()
+    const csrfToken = getCookie('csrftoken')
+    
+    const formData = new FormData()
+    formData.append('archivo', archivo, archivo.name)
+    formData.append('ficha_id', fichaId.toString())
+    
+    try {
+      const response = await fetch(`${API_URL}/archivos/upload/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        body: formData,
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        return data.id
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('Error subiendo archivo:', response.status, errorData)
+        return null
+      }
+    } catch (error) {
+      console.error('Error en fetch de archivo:', error)
+      return null
     }
   },
 }

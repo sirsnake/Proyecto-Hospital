@@ -310,11 +310,24 @@ function ChatParamedicoPage() {
 
     setEnviando(true)
     try {
+      let archivoId: number | undefined = undefined
+      
+      // Si hay archivo, subirlo primero
+      if (archivoSeleccionado) {
+        const uploadedId = await chatAPI.subirArchivo(parseInt(fichaId), archivoSeleccionado)
+        if (!uploadedId) {
+          console.error("Error al subir archivo")
+          setEnviando(false)
+          return
+        }
+        archivoId = uploadedId
+      }
+      
       const contenido = nuevoMensaje.trim() || "(Archivo adjunto)"
       const mensaje = await chatAPI.enviarMensaje(
         parseInt(fichaId),
         contenido,
-        archivoSeleccionado || undefined
+        archivoId
       )
       setMensajes((prev) => [...prev, mensaje])
       setNuevoMensaje("")
