@@ -198,8 +198,8 @@ export default function MedicoDashboard() {
   const [camasDisponibles, setCamasDisponibles] = useState<any[]>([])
   const [modalCamasOpen, setModalCamasOpen] = useState(false)
   const [fichaParaCama, setFichaParaCama] = useState<any>(null)
-  const [tipoCamaFiltro, setTipoCamaFiltro] = useState("all")
-  const [, setTipoCamaRequerida] = useState<"general" | "uci">("general")
+  const [tipoCamaFiltro, setTipoCamaFiltro] = useState<"all" | "hospitalizacion" | "uci">("all")
+  const [, setTipoCamaRequerida] = useState<"hospitalizacion" | "uci">("hospitalizacion")
   
   // Estados para editar receta médica
   const [modalRecetaOpen, setModalRecetaOpen] = useState(false)
@@ -3178,8 +3178,8 @@ export default function MedicoDashboard() {
             </Label>
             <Select
               value={tipoCamaFiltro}
-              onValueChange={async (value) => {
-                setTipoCamaFiltro(value)
+              onValueChange={async (value: string) => {
+                setTipoCamaFiltro(value as "all" | "hospitalizacion" | "uci")
                 await cargarCamasDisponibles(value !== 'all' ? value : undefined)
               }}
             >
