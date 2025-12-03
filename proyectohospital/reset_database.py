@@ -204,36 +204,46 @@ def crear_usuarios():
 
 
 def crear_camas():
-    """Crear camas iniciales si no existen"""
-    print("🛏️  Verificando camas...")
+    """Crear camas iniciales - BORRANDO las existentes primero"""
+    print("🛏️  Configurando camas...")
     
-    if Cama.objects.count() == 0:
-        camas_data = [
-            # Boxes de urgencia
-            {'nombre': 'Box 1', 'tipo': 'box', 'ubicacion': 'Urgencias'},
-            {'nombre': 'Box 2', 'tipo': 'box', 'ubicacion': 'Urgencias'},
-            {'nombre': 'Box 3', 'tipo': 'box', 'ubicacion': 'Urgencias'},
-            {'nombre': 'Box 4', 'tipo': 'box', 'ubicacion': 'Urgencias'},
-            {'nombre': 'Box 5', 'tipo': 'box', 'ubicacion': 'Urgencias'},
-            # Hospitalización
-            {'nombre': 'Cama H-101', 'tipo': 'hospitalizacion', 'ubicacion': 'Piso 1'},
-            {'nombre': 'Cama H-102', 'tipo': 'hospitalizacion', 'ubicacion': 'Piso 1'},
-            {'nombre': 'Cama H-103', 'tipo': 'hospitalizacion', 'ubicacion': 'Piso 1'},
-            {'nombre': 'Cama H-201', 'tipo': 'hospitalizacion', 'ubicacion': 'Piso 2'},
-            {'nombre': 'Cama H-202', 'tipo': 'hospitalizacion', 'ubicacion': 'Piso 2'},
-            # UCI
-            {'nombre': 'UCI-1', 'tipo': 'uci', 'ubicacion': 'UCI'},
-            {'nombre': 'UCI-2', 'tipo': 'uci', 'ubicacion': 'UCI'},
-            {'nombre': 'UCI-3', 'tipo': 'uci', 'ubicacion': 'UCI'},
-        ]
+    # BORRAR TODAS LAS CAMAS EXISTENTES
+    Cama.objects.all().delete()
+    print("   - Camas anteriores eliminadas")
+    
+    camas_data = [
+        # Boxes de urgencia (5 boxes)
+        {'numero': 'BOX-01', 'tipo': 'box', 'piso': 1, 'sala': 'Urgencias', 'estado': 'disponible'},
+        {'numero': 'BOX-02', 'tipo': 'box', 'piso': 1, 'sala': 'Urgencias', 'estado': 'disponible'},
+        {'numero': 'BOX-03', 'tipo': 'box', 'piso': 1, 'sala': 'Urgencias', 'estado': 'disponible'},
+        {'numero': 'BOX-04', 'tipo': 'box', 'piso': 1, 'sala': 'Urgencias', 'estado': 'disponible'},
+        {'numero': 'BOX-05', 'tipo': 'box', 'piso': 1, 'sala': 'Urgencias', 'estado': 'disponible'},
         
-        for cama_data in camas_data:
-            Cama.objects.create(**cama_data)
-            print(f"   + {cama_data['nombre']}")
+        # Hospitalización (10 camas)
+        {'numero': 'HOSP-01', 'tipo': 'hospitalizacion', 'piso': 2, 'sala': 'Hospitalización A', 'estado': 'disponible'},
+        {'numero': 'HOSP-02', 'tipo': 'hospitalizacion', 'piso': 2, 'sala': 'Hospitalización A', 'estado': 'disponible'},
+        {'numero': 'HOSP-03', 'tipo': 'hospitalizacion', 'piso': 2, 'sala': 'Hospitalización A', 'estado': 'disponible'},
+        {'numero': 'HOSP-04', 'tipo': 'hospitalizacion', 'piso': 2, 'sala': 'Hospitalización A', 'estado': 'disponible'},
+        {'numero': 'HOSP-05', 'tipo': 'hospitalizacion', 'piso': 2, 'sala': 'Hospitalización A', 'estado': 'disponible'},
+        {'numero': 'HOSP-06', 'tipo': 'hospitalizacion', 'piso': 3, 'sala': 'Hospitalización B', 'estado': 'disponible'},
+        {'numero': 'HOSP-07', 'tipo': 'hospitalizacion', 'piso': 3, 'sala': 'Hospitalización B', 'estado': 'disponible'},
+        {'numero': 'HOSP-08', 'tipo': 'hospitalizacion', 'piso': 3, 'sala': 'Hospitalización B', 'estado': 'disponible'},
+        {'numero': 'HOSP-09', 'tipo': 'hospitalizacion', 'piso': 3, 'sala': 'Hospitalización B', 'estado': 'disponible'},
+        {'numero': 'HOSP-10', 'tipo': 'hospitalizacion', 'piso': 3, 'sala': 'Hospitalización B', 'estado': 'disponible'},
         
-        print("✅ Camas creadas")
-    else:
-        print("   ✓ Camas ya existen")
+        # UCI (5 camas)
+        {'numero': 'UCI-01', 'tipo': 'uci', 'piso': 4, 'sala': 'Unidad de Cuidados Intensivos', 'estado': 'disponible'},
+        {'numero': 'UCI-02', 'tipo': 'uci', 'piso': 4, 'sala': 'Unidad de Cuidados Intensivos', 'estado': 'disponible'},
+        {'numero': 'UCI-03', 'tipo': 'uci', 'piso': 4, 'sala': 'Unidad de Cuidados Intensivos', 'estado': 'disponible'},
+        {'numero': 'UCI-04', 'tipo': 'uci', 'piso': 4, 'sala': 'Unidad de Cuidados Intensivos', 'estado': 'disponible'},
+        {'numero': 'UCI-05', 'tipo': 'uci', 'piso': 4, 'sala': 'Unidad de Cuidados Intensivos', 'estado': 'disponible'},
+    ]
+    
+    for cama_data in camas_data:
+        Cama.objects.create(**cama_data)
+        print(f"   + {cama_data['numero']} ({cama_data['tipo']})")
+    
+    print(f"✅ {len(camas_data)} camas creadas")
 
 
 def crear_configuracion():

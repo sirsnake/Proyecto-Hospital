@@ -531,25 +531,67 @@ function ChatParamedicoPage() {
                           <p className="text-sm whitespace-pre-wrap">{mensaje.contenido}</p>
 
                           {mensaje.archivo_adjunto && (
-                            <a
-                              href={mensaje.archivo_adjunto.archivo}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 mt-2 p-2 bg-black/20 rounded-lg hover:bg-black/30 transition-colors"
-                            >
-                              {mensaje.archivo_adjunto.tipo.startsWith("image") ? (
-                                <ImageIcon className="w-4 h-4" />
-                              ) : mensaje.archivo_adjunto.tipo.startsWith("video") ? (
-                                <Video className="w-4 h-4" />
-                              ) : mensaje.archivo_adjunto.tipo.startsWith("audio") ? (
-                                <Mic className="w-4 h-4" />
+                            <div className="mt-2">
+                              {/* Imagen - mostrar preview */}
+                              {mensaje.archivo_adjunto.tipo === 'imagen' ? (
+                                <a
+                                  href={mensaje.archivo_adjunto.archivo}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block"
+                                >
+                                  <img 
+                                    src={mensaje.archivo_adjunto.archivo}
+                                    alt={mensaje.archivo_adjunto.nombre_original}
+                                    className="max-w-full max-h-48 rounded-lg object-cover"
+                                    loading="lazy"
+                                  />
+                                  <p className="text-xs mt-1 opacity-70 flex items-center gap-1">
+                                    <ImageIcon className="h-3 w-3" />
+                                    {mensaje.archivo_adjunto.nombre_original}
+                                  </p>
+                                </a>
+                              ) : mensaje.archivo_adjunto.tipo === 'video' ? (
+                                /* Video - mostrar reproductor */
+                                <div className="rounded-lg overflow-hidden bg-black/20">
+                                  <video 
+                                    src={mensaje.archivo_adjunto.archivo}
+                                    controls
+                                    className="max-w-full max-h-64 rounded-lg"
+                                    preload="metadata"
+                                    playsInline
+                                  />
+                                  <p className="text-xs mt-1 opacity-70 flex items-center gap-1 p-1">
+                                    <Video className="h-3 w-3" />
+                                    {mensaje.archivo_adjunto.nombre_original}
+                                  </p>
+                                </div>
+                              ) : mensaje.archivo_adjunto.tipo === 'audio' ? (
+                                /* Audio - mostrar reproductor */
+                                <div className="flex items-center gap-2 p-2 bg-black/20 rounded-lg">
+                                  <Mic className="h-4 w-4 flex-shrink-0" />
+                                  <audio 
+                                    src={mensaje.archivo_adjunto.archivo}
+                                    controls
+                                    className="flex-1 h-8"
+                                    preload="metadata"
+                                  />
+                                </div>
                               ) : (
-                                <FileText className="w-4 h-4" />
+                                /* Otros archivos - mostrar enlace de descarga */
+                                <a
+                                  href={mensaje.archivo_adjunto.archivo}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 p-2 bg-black/20 rounded-lg hover:bg-black/30 transition-colors"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  <span className="text-xs truncate">
+                                    {mensaje.archivo_adjunto.nombre_original}
+                                  </span>
+                                </a>
                               )}
-                              <span className="text-xs truncate">
-                                {mensaje.archivo_adjunto.nombre_original}
-                              </span>
-                            </a>
+                            </div>
                           )}
                         </div>
 
