@@ -3,12 +3,16 @@ Django settings for proyectohospital project.
 """
 
 from pathlib import Path
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-2c6p0@zl9_rg7a2v**z13qfj&+$a9&y7fh17*o+aj!l!ri1$ph'
 
-DEBUG = True
+# Detectar si estamos en PythonAnywhere
+PYTHONANYWHERE = 'PYTHONANYWHERE_DOMAIN' in os.environ or os.path.exists('/home/SirSnake')
+
+DEBUG = not PYTHONANYWHERE  # Debug solo en desarrollo local
 
 ALLOWED_HOSTS = ['*']
 
@@ -55,20 +59,38 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'proyectohospital.wsgi.application'
 
-# MariaDB Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'hospital',
-        'USER': 'diego',
-        'PASSWORD': '',
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        },
+# Base de datos - Configuración automática según entorno
+if PYTHONANYWHERE:
+    # Configuración para PythonAnywhere (MySQL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'SirSnake$hospital',
+            'USER': 'SirSnake',
+            'PASSWORD': 'Diegomejias1',  # Cambiar si es diferente
+            'HOST': 'SirSnake.mysql.pythonanywhere-services.com',
+            'PORT': '3306',
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            },
+        }
     }
-}
+else:
+    # Configuración local (MariaDB/MySQL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'hospital',
+            'USER': 'diego',
+            'PASSWORD': '',
+            'HOST': 'localhost',
+            'PORT': '3306',
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            },
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -106,10 +128,11 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SECURE = False
-SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SAMESITE = 'None' if PYTHONANYWHERE else 'Lax'
+CSRF_COOKIE_SECURE = PYTHONANYWHERE  # True en producción
+SESSION_COOKIE_SAMESITE = 'None' if PYTHONANYWHERE else 'Lax'
+SESSION_COOKIE_SECURE = PYTHONANYWHERE  # True en producción
+SESSION_COOKIE_HTTPONLY = True
 
 CORS_ALLOW_HEADERS = [
     'accept', 'accept-encoding', 'authorization', 'content-type',
