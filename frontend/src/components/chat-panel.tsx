@@ -33,10 +33,7 @@ import {
   Camera,
   Video,
   Mic,
-  MicOff,
   Square,
-  Play,
-  Pause,
   Plus,
   Maximize,
 } from "lucide-react"
@@ -100,7 +97,7 @@ export function ChatPanel({
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mensajesNoLeidos, setMensajesNoLeidos] = useState(0)
-  const [polling, setPolling] = useState(true)
+  const [polling] = useState(true) // Polling siempre activo
   
   // Estados para grabación de audio
   const [grabandoAudio, setGrabandoAudio] = useState(false)
@@ -130,7 +127,6 @@ export function ChatPanel({
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<number>(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const dropdownOpenRef = useRef(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   
   // Detectar si es móvil/tablet (tiene cámara nativa)
@@ -833,7 +829,7 @@ export function ChatPanel({
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-sm safe-area-top">
+        <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-sm z-20">
           <div className="flex items-center gap-2">
             {tipoCamara === 'foto' ? (
               <Camera className="h-5 w-5 text-blue-400" />
@@ -855,14 +851,14 @@ export function ChatPanel({
         </div>
         
         {/* Preview de cámara - ocupa todo el espacio disponible */}
-        <div className="flex-1 relative bg-black">
+        <div className="flex-1 relative bg-black overflow-hidden">
           <video
             ref={videoPreviewRef}
             autoPlay
             playsInline
             muted
             className={cn(
-              "w-full h-full object-cover",
+              "absolute inset-0 w-full h-full object-cover z-0",
               // Solo efecto espejo en desktop (cámara frontal)
               !isMobile && "transform scale-x-[-1]"
             )}
@@ -870,7 +866,7 @@ export function ChatPanel({
           
           {/* Indicador de grabación */}
           {grabandoVideo && (
-            <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-600/90 px-4 py-2 rounded-full">
+            <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-600/90 px-4 py-2 rounded-full z-10">
               <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
               <span className="text-white font-medium">
                 REC {formatearTiempoVideo(tiempoVideo)}
@@ -880,7 +876,7 @@ export function ChatPanel({
         </div>
         
         {/* Controles - estilo cámara de celular */}
-        <div className="p-6 flex justify-center items-center gap-8 bg-slate-900/90 backdrop-blur-sm safe-area-bottom">
+        <div className="p-6 flex justify-center items-center gap-8 bg-slate-900/90 backdrop-blur-sm z-20">
           {/* Botón cancelar a la izquierda */}
           <Button
             variant="ghost"
@@ -895,7 +891,7 @@ export function ChatPanel({
             // Botón de captura de foto - estilo cámara
             <button
               onClick={capturarFoto}
-              className="w-20 h-20 rounded-full bg-white border-4 border-slate-600 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center"
+              className="w-20 h-20 rounded-full bg-white border-4 border-slate-600 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center z-30"
             >
               <div className="w-16 h-16 rounded-full bg-white border-2 border-slate-400" />
             </button>
@@ -904,14 +900,14 @@ export function ChatPanel({
             !grabandoVideo ? (
               <button
                 onClick={iniciarGrabacionVideo}
-                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform flex items-center justify-center"
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform flex items-center justify-center z-30"
               >
                 <div className="w-8 h-8 rounded-full bg-red-400" />
               </button>
             ) : (
               <button
                 onClick={detenerGrabacionVideo}
-                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform animate-pulse flex items-center justify-center"
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform animate-pulse flex items-center justify-center z-30"
               >
                 <Square className="w-8 h-8 text-white" />
               </button>

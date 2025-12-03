@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { getSession } from "@/lib/auth"
-import { authAPI, pacientesAPI, fichasAPI, solicitudesMedicamentosAPI, turnosAPI } from "@/lib/api"
+import { authAPI, pacientesAPI, fichasAPI, solicitudesMedicamentosAPI } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,7 +38,6 @@ import {
   Stethoscope,
   ChevronRight,
   Thermometer,
-  Activity as Pulse,
   Wind,
   Droplets,
   UserCheck,

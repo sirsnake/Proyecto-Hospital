@@ -2,7 +2,6 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { getSession } from "@/lib/auth"
 import { fichasAPI, chatAPI } from "@/lib/api"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -567,7 +566,7 @@ function ChatParamedicoPage() {
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-sm safe-area-top">
+        <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-sm z-20">
           <div className="flex items-center gap-2">
             {tipoCamara === 'foto' ? (
               <Camera className="h-5 w-5 text-blue-400" />
@@ -589,18 +588,18 @@ function ChatParamedicoPage() {
         </div>
         
         {/* Preview de cámara - ocupa todo el espacio disponible */}
-        <div className="flex-1 relative bg-black">
+        <div className="flex-1 relative bg-black overflow-hidden">
           <video
             ref={videoPreviewRef}
             autoPlay
             playsInline
             muted
-            className={`w-full h-full object-cover ${!isMobile ? 'transform scale-x-[-1]' : ''}`}
+            className={`absolute inset-0 w-full h-full object-cover z-0 ${!isMobile ? 'transform scale-x-[-1]' : ''}`}
           />
           
           {/* Indicador de grabación */}
           {grabandoVideo && (
-            <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-600/90 px-4 py-2 rounded-full">
+            <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-600/90 px-4 py-2 rounded-full z-10">
               <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
               <span className="text-white font-medium">
                 REC {formatearTiempoVideo(tiempoVideo)}
@@ -610,7 +609,7 @@ function ChatParamedicoPage() {
         </div>
         
         {/* Controles - estilo cámara de celular */}
-        <div className="p-6 flex justify-center items-center gap-8 bg-slate-900/90 backdrop-blur-sm safe-area-bottom">
+        <div className="p-6 flex justify-center items-center gap-8 bg-slate-900/90 backdrop-blur-sm z-20">
           {/* Botón cancelar a la izquierda */}
           <Button
             variant="ghost"
@@ -625,7 +624,7 @@ function ChatParamedicoPage() {
             // Botón de captura de foto - estilo cámara
             <button
               onClick={capturarFoto}
-              className="w-20 h-20 rounded-full bg-white border-4 border-slate-600 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center"
+              className="w-20 h-20 rounded-full bg-white border-4 border-slate-600 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center z-30"
             >
               <div className="w-16 h-16 rounded-full bg-white border-2 border-slate-400" />
             </button>
@@ -634,14 +633,14 @@ function ChatParamedicoPage() {
             !grabandoVideo ? (
               <button
                 onClick={iniciarGrabacionVideo}
-                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform flex items-center justify-center"
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform flex items-center justify-center z-30"
               >
                 <div className="w-8 h-8 rounded-full bg-red-400" />
               </button>
             ) : (
               <button
                 onClick={detenerGrabacionVideo}
-                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform animate-pulse flex items-center justify-center"
+                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-transform animate-pulse flex items-center justify-center z-30"
               >
                 <Square className="w-8 h-8 text-white" />
               </button>

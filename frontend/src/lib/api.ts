@@ -665,14 +665,14 @@ export const usuariosAPI = {
 // API para logs de auditoría (admin)
 export const auditLogsAPI = {
   listar: async (params?: { 
-    usuario?: number; 
+    usuario?: string; 
     accion?: string; 
     modelo?: string;
     fecha_desde?: string;
     fecha_hasta?: string;
   }) => {
     const query = new URLSearchParams()
-    if (params?.usuario) query.append('usuario', params.usuario.toString())
+    if (params?.usuario && params.usuario.trim()) query.append('usuario', params.usuario)
     if (params?.accion) query.append('accion', params.accion)
     if (params?.modelo) query.append('modelo', params.modelo)
     if (params?.fecha_desde) query.append('fecha_desde', params.fecha_desde)

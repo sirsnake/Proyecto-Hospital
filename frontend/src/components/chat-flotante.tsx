@@ -40,7 +40,10 @@ export function ChatFlotante({
 }: ChatFlotanteProps) {
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("chat")
-  const [mensajesNoLeidos, setMensajesNoLeidos] = useState(0)
+  const [mensajesNoLeidos, _setMensajesNoLeidos] = useState(0)
+  
+  // TODO: Implementar contador de mensajes no leídos
+  void _setMensajesNoLeidos
 
   // Callback cuando se recibe un nuevo mensaje (para el contador de no leídos)
   // Se actualizará desde el ChatPanel
@@ -108,7 +111,7 @@ export function ChatFlotante({
               </p>
               <SubidaArchivos
                 fichaId={fichaId}
-                onArchivoSubido={(archivo) => {
+                onArchivoSubido={() => {
                   // Opcionalmente cambiar a tab de archivos después de subir
                 }}
               />

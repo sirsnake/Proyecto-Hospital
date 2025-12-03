@@ -79,3 +79,16 @@ export function obtenerEdad(fechaNacimiento: string | Date | null): string {
   
   return `${edad} años`
 }
+
+// Colores de prioridad de triage
+export const COLORES_TRIAGE = {
+  C1: { bg: 'bg-red-600', text: 'text-red-400', border: 'border-red-500', nombre: 'Vital' },
+  C2: { bg: 'bg-orange-600', text: 'text-orange-400', border: 'border-orange-500', nombre: 'Emergencia' },
+  C3: { bg: 'bg-yellow-600', text: 'text-yellow-400', border: 'border-yellow-500', nombre: 'Urgencia' },
+  C4: { bg: 'bg-green-600', text: 'text-green-400', border: 'border-green-500', nombre: 'Menor' },
+  C5: { bg: 'bg-blue-600', text: 'text-blue-400', border: 'border-blue-500', nombre: 'No urgente' },
+} as const
+
+export function getColorTriage(prioridad: string): typeof COLORES_TRIAGE[keyof typeof COLORES_TRIAGE] {
+  return COLORES_TRIAGE[prioridad as keyof typeof COLORES_TRIAGE] || COLORES_TRIAGE.C5
+}

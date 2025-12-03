@@ -74,7 +74,7 @@ export default function AdministradorDashboard() {
   const [logsLoading, setLogsLoading] = useState(false)
   const [filtroAccion, setFiltroAccion] = useState("all")
   const [filtroModelo, setFiltroModelo] = useState("all")
-  const [filtroUsuarioLog, setFiltroUsuarioLog] = useState("all")
+  const [filtroUsuarioLog, setFiltroUsuarioLog] = useState("")
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
   
@@ -476,7 +476,7 @@ export default function AdministradorDashboard() {
     
     csv += "=== RESUMEN DE ATENCIONES ===\n"
     csv += `Pacientes en urgencias,${fichasActivas.length}\n`
-    csv += `Atendidos hoy,${fichasAtendidas.length}\n`
+    csv += `Dados de alta hoy,${fichasAtendidas.length}\n`
     csv += `Tiempo espera promedio,${tiempoEsperaPromedio || 0} min\n\n`
     
     csv += "=== ESTADO DE CAMAS ===\n"
@@ -564,30 +564,34 @@ export default function AdministradorDashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 lg:w-[1000px]">
-            <TabsTrigger value="dashboard" className="flex items-center gap-1">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:w-[1000px] h-auto">
+            <TabsTrigger value="dashboard" className="flex items-center gap-1 text-xs sm:text-sm">
               <Activity className="w-4 h-4" />
-              Dashboard
+              <span className="hidden sm:inline">Dashboard</span>
+              <span className="sm:hidden">Inicio</span>
             </TabsTrigger>
-            <TabsTrigger value="turnos" className="flex items-center gap-1">
+            <TabsTrigger value="turnos" className="flex items-center gap-1 text-xs sm:text-sm">
               <Calendar className="w-4 h-4" />
               Turnos
             </TabsTrigger>
-            <TabsTrigger value="camas" className="flex items-center gap-1">
+            <TabsTrigger value="camas" className="flex items-center gap-1 text-xs sm:text-sm">
               <Bed className="w-4 h-4" />
               Camas
             </TabsTrigger>
-            <TabsTrigger value="usuarios" className="flex items-center gap-1">
+            <TabsTrigger value="usuarios" className="flex items-center gap-1 text-xs sm:text-sm">
               <Users className="w-4 h-4" />
-              Personal
+              <span className="hidden sm:inline">Personal</span>
+              <span className="sm:hidden">Staff</span>
             </TabsTrigger>
-            <TabsTrigger value="reportes" className="flex items-center gap-1">
+            <TabsTrigger value="reportes" className="flex items-center gap-1 text-xs sm:text-sm">
               <FileText className="w-4 h-4" />
-              Reportes
+              <span className="hidden sm:inline">Reportes</span>
+              <span className="sm:hidden">Rep.</span>
             </TabsTrigger>
-            <TabsTrigger value="logs" className="flex items-center gap-1">
+            <TabsTrigger value="logs" className="flex items-center gap-1 text-xs sm:text-sm">
               <Shield className="w-4 h-4" />
-              Auditoría
+              <span className="hidden sm:inline">Auditoría</span>
+              <span className="sm:hidden">Audit</span>
             </TabsTrigger>
           </TabsList>
 
@@ -625,10 +629,10 @@ export default function AdministradorDashboard() {
                 description="Para nuevos pacientes"
               />
               <StatCard
-                title="Atendidos Hoy"
+                title="Dados de Alta Hoy"
                 value={String(fichasAtendidas.length)}
                 icon={<UserCheck className="w-5 h-5 text-green-400" />}
-                description="Pacientes dados de alta"
+                description="Pacientes que salieron del hospital"
               />
               <StatCard
                 title="Personal"
@@ -1055,15 +1059,15 @@ export default function AdministradorDashboard() {
             </div>
 
             <Card>
-              <CardContent className="p-0">
-                <Table>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table className="min-w-[800px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Usuario</TableHead>
-                      <TableHead>Nombre Completo</TableHead>
-                      <TableHead>RUT</TableHead>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead className="hidden sm:table-cell">RUT</TableHead>
                       <TableHead>Rol</TableHead>
-                      <TableHead>Email</TableHead>
+                      <TableHead className="hidden md:table-cell">Email</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Acciones</TableHead>
                     </TableRow>
@@ -1086,7 +1090,7 @@ export default function AdministradorDashboard() {
                         <TableRow key={usuario.id}>
                           <TableCell className="font-medium">{usuario.username}</TableCell>
                           <TableCell>{usuario.first_name} {usuario.last_name}</TableCell>
-                          <TableCell>{usuario.rut}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{usuario.rut}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={
                               usuario.rol === 'medico' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
@@ -1100,7 +1104,7 @@ export default function AdministradorDashboard() {
                                'Administrador'}
                             </Badge>
                           </TableCell>
-                          <TableCell>{usuario.email}</TableCell>
+                          <TableCell className="hidden md:table-cell">{usuario.email}</TableCell>
                           <TableCell>
                             {usuario.is_active ? (
                               <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">

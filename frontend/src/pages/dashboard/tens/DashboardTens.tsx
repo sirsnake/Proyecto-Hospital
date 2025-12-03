@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { getSession } from "@/lib/auth"
-import { authAPI, fichasAPI, signosVitalesAPI, camasAPI, chatAPI, pacientesAPI, solicitudesExamenesAPI, triageAPI, medicosAPI, turnosAPI } from "@/lib/api"
+import { authAPI, fichasAPI, signosVitalesAPI, camasAPI, pacientesAPI, solicitudesExamenesAPI, triageAPI, medicosAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { ModalBuscarPaciente } from "@/components/modal-buscar-paciente"
 import { ChatPanel } from "@/components/chat-panel"
 import { NotificationsPanel } from "@/components/notifications-panel"
@@ -41,8 +41,6 @@ import {
   BedDouble,
   CheckCircle,
   AlertCircle,
-  X,
-  ExternalLink,
   UserPlus,
   Phone,
   FileText,
