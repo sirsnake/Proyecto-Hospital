@@ -16,6 +16,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getApiUrl } from "@/lib/api"
 
 interface ArchivoParaSubir {
   file: File
@@ -33,11 +34,7 @@ interface SubidaArchivosProps {
   maxTamano?: number // en bytes
 }
 
-// Detectar si usar PythonAnywhere
-const USE_PYTHONANYWHERE = true
-const API_BASE_URL = USE_PYTHONANYWHERE 
-  ? "https://sirsnake.pythonanywhere.com/api"
-  : "http://localhost:8000/api"
+const API_BASE_URL = getApiUrl()
 
 const EXTENSIONES_PERMITIDAS = [
   ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp",

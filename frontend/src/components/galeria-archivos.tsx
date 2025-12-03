@@ -26,6 +26,7 @@ import {
   RotateCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getApiUrl } from "@/lib/api"
 
 interface ArchivoAdjunto {
   id: number
@@ -50,11 +51,7 @@ interface GaleriaArchivosProps {
   permitirEliminar?: boolean
 }
 
-// Detectar si usar PythonAnywhere
-const USE_PYTHONANYWHERE = true
-const API_BASE_URL = USE_PYTHONANYWHERE 
-  ? "https://sirsnake.pythonanywhere.com/api"
-  : "http://localhost:8000/api"
+const API_BASE_URL = getApiUrl()
 
 export function GaleriaArchivos({
   fichaId,

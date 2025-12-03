@@ -41,32 +41,9 @@ import {
   Maximize,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getApiUrl } from "@/lib/api"
 
-// Función para obtener la URL del API dinámicamente
-const USE_PYTHONANYWHERE = true
-
-function getApiBaseUrl(): string {
-  if (USE_PYTHONANYWHERE) {
-    return 'https://sirsnake.pythonanywhere.com/api'
-  }
-  
-  if (typeof window === 'undefined') {
-    return 'http://localhost:8000/api'
-  }
-  
-  const hostname = window.location.hostname
-  
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:8000/api'
-  }
-  
-  if (hostname.includes('devtunnels.ms')) {
-    const backendHost = hostname.replace('-3000.', '-8000.')
-    return `https://${backendHost}/api`
-  }
-  
-  return `http://${hostname.split(':')[0]}:8000/api`
-}
+const API_BASE_URL = getApiUrl()
 
 interface Usuario {
   id: number
@@ -105,8 +82,6 @@ interface ChatPanelProps {
   onClose?: () => void
   pacienteNombre?: string
 }
-
-const API_BASE_URL = getApiBaseUrl()
 
 export function ChatPanel({
   fichaId,

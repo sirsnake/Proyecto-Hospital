@@ -6,7 +6,7 @@
 const USE_PYTHONANYWHERE = false
 
 // Detectar si estamos en un túnel de desarrollo o localhost
-function getApiUrl(): string {
+export function getApiUrl(): string {
   // Si queremos usar PythonAnywhere explícitamente
   if (USE_PYTHONANYWHERE) {
     return 'https://sirsnake.pythonanywhere.com/api'

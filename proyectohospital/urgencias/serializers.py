@@ -588,25 +588,21 @@ class MensajeChatSerializer(serializers.ModelSerializer):
 
 class MensajeChatCreateSerializer(serializers.ModelSerializer):
     """Serializer para crear mensajes de chat"""
-    ficha_id = serializers.IntegerField(write_only=True, required=False)
+    ficha_id = serializers.IntegerField(write_only=True)
     archivo_adjunto_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     contenido = serializers.CharField(required=False, allow_blank=True, default="")
     
     class Meta:
         model = MensajeChat
-        fields = ['ficha', 'ficha_id', 'contenido', 'archivo_adjunto', 'archivo_adjunto_id']
-        extra_kwargs = {
-            'ficha': {'required': False},
-            'archivo_adjunto': {'required': False}
-        }
+        fields = ['ficha_id', 'contenido', 'archivo_adjunto_id']
     
     def validate(self, data):
-        # Permitir ficha_id como alternativa a ficha
-        if 'ficha_id' in data and 'ficha' not in data:
-            try:
-                data['ficha'] = FichaEmergencia.objects.get(id=data['ficha_id'])
-            except FichaEmergencia.DoesNotExist:
-                raise serializers.ValidationError({'ficha_id': 'Ficha no encontrada'})
+        # Validar que la ficha existe
+        ficha_id = data.get('ficha_id')
+        try:
+            data['ficha'] = FichaEmergencia.objects.get(id=ficha_id)
+        except FichaEmergencia.DoesNotExist:
+            raise serializers.ValidationError({'ficha_id': 'Ficha no encontrada'})
         
         # Permitir archivo_adjunto_id como alternativa (solo si tiene valor)
         archivo_id = data.get('archivo_adjunto_id')
