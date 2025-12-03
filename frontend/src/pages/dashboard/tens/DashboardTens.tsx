@@ -19,6 +19,7 @@ import { ModalTurno } from "@/components/modal-turno"
 import { useTurno } from "@/hooks/use-turno"
 import { toast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
+import { SignoVitalCard, evaluarSignoVital } from "@/utils/signos-vitales"
 import { 
   Activity, 
   Heart, 
@@ -37,9 +38,6 @@ import {
   LogOut,
   Search,
   Stethoscope,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   BedDouble,
   CheckCircle,
   AlertCircle,
@@ -56,71 +54,6 @@ import {
   Zap,
   History
 } from "lucide-react"
-
-// Componente de Signo Vital Individual
-function SignoVitalCard({ 
-  icon: Icon, 
-  label, 
-  value, 
-  unit, 
-  status = "normal",
-  trend
-}: { 
-  icon: any
-  label: string
-  value: string | number
-  unit?: string
-  status?: "normal" | "warning" | "critical"
-  trend?: "up" | "down" | "stable"
-}) {
-  const statusColors = {
-    normal: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
-    warning: "bg-amber-500/10 border-amber-500/30 text-amber-400",
-    critical: "bg-red-500/10 border-red-500/30 text-red-400"
-  }
-  
-  const iconColors = {
-    normal: "text-emerald-400",
-    warning: "text-amber-400", 
-    critical: "text-red-400"
-  }
-
-  const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus
-
-  return (
-    <div className={`p-3 rounded-xl border ${statusColors[status]} transition-all hover:scale-[1.02]`}>
-      <div className="flex items-center justify-between mb-1">
-        <Icon className={`w-4 h-4 ${iconColors[status]}`} />
-        {trend && <TrendIcon className={`w-3 h-3 ${iconColors[status]}`} />}
-      </div>
-      <p className="text-xs text-slate-400 mb-0.5">{label}</p>
-      <p className="text-lg font-bold text-white">
-        {value}
-        {unit && <span className="text-xs text-slate-400 ml-1">{unit}</span>}
-      </p>
-    </div>
-  )
-}
-
-// Función para evaluar estado de signos vitales
-function evaluarSignoVital(tipo: string, valor: number): "normal" | "warning" | "critical" {
-  const rangos: Record<string, { normal: [number, number], warning: [number, number] }> = {
-    presion_sistolica: { normal: [90, 140], warning: [80, 160] },
-    presion_diastolica: { normal: [60, 90], warning: [50, 100] },
-    frecuencia_cardiaca: { normal: [60, 100], warning: [50, 120] },
-    frecuencia_respiratoria: { normal: [12, 20], warning: [10, 25] },
-    saturacion_o2: { normal: [95, 100], warning: [90, 100] },
-    temperatura: { normal: [36, 37.5], warning: [35, 38.5] },
-    glasgow: { normal: [14, 15], warning: [9, 15] }
-  }
-  
-  const rango = rangos[tipo]
-  if (!rango) return "normal"
-  
-  if (valor >= rango.normal[0] && valor <= rango.normal[1]) return "normal"
-  if (valor >= rango.warning[0] && valor <= rango.warning[1]) return "warning"
-  return "critical"
-}
 
 export default function TensDashboard() {
   const navigate = useNavigate()
